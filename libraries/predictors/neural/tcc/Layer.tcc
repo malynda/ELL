@@ -9,7 +9,7 @@
 #include "Layer.h"
 
 // stl
-#include <iostream>
+#include <ostream>
 #include <limits>
 #include <type_traits>
 
@@ -19,7 +19,30 @@ namespace predictors
 {
 namespace neural
 {
+    template <typename ValueType>
+    ValueType GetPaddingValue(PaddingScheme paddingScheme)
+    {
+        switch (paddingScheme)
+        {
+            case PaddingScheme::zeros:
+                return static_cast<ValueType>(0);
+            case PaddingScheme::minusOnes:
+                return static_cast<ValueType>(-1);
+            case PaddingScheme::alternatingZeroAndOnes:
+                return static_cast<ValueType>(0);
+            case PaddingScheme::randomZeroAndOnes:
+                return static_cast<ValueType>(0);
+            case PaddingScheme::min:
+                return -std::numeric_limits<ValueType>::max();
+            case PaddingScheme::max:
+                return std::numeric_limits<ValueType>::max();
+        }
+        throw utilities::InputException(utilities::InputExceptionErrors::invalidArgument, "Invalid PaddingScheme");
+    }
 
+    //
+    // Layer
+    //
     template <typename ElementType>
     Layer<ElementType>::Layer(const LayerParameters& layerParameters) :
         _layerParameters(layerParameters),
@@ -29,11 +52,15 @@ namespace neural
     }
 
     template <typename ElementType>
-    typename Layer<ElementType>::Shape Layer<ElementType>::GetInputShapeWithPadding() const
+    typename Layer<ElementType>::Shape Layer<ElementType>::GetInputShapeMinusPadding() const
     {
         auto&& inputShape = _layerParameters.input.GetShape(); 
         auto paddingSize = _layerParameters.inputPaddingParameters.paddingSize;
-        return { inputShape[0]+2*paddingSize, inputShape[1]+2*paddingSize, inputShape[2] }; 
+        if(inputShape[0] < 2*paddingSize || inputShape[1] < 2*paddingSize)
+        {
+            throw utilities::InputException(utilities::InputExceptionErrors::sizeMismatch, "Input size not large enough to accomodate padding");
+        }       
+        return { inputShape[0]-2*paddingSize, inputShape[1]-2*paddingSize, inputShape[2] };
     }
 
     template <typename ElementType>
@@ -41,6 +68,10 @@ namespace neural
     {
         auto&& outputShape = _layerParameters.outputShape; 
         auto paddingSize = _layerParameters.outputPaddingParameters.paddingSize;
+        if(outputShape[0] < 2*paddingSize || outputShape[1] < 2*paddingSize)
+        {
+            throw utilities::InputException(utilities::InputExceptionErrors::sizeMismatch, "Output size not large enough to accomodate padding");
+        }
         return { outputShape[0]-2*paddingSize, outputShape[1]-2*paddingSize, outputShape[2] };
     }
 
@@ -134,8 +165,6 @@ namespace neural
 
         archiver["outputPaddingScheme"] << static_cast<int>(_layerParameters.outputPaddingParameters.paddingScheme);
         archiver["outputPaddingSize"] << _layerParameters.outputPaddingParameters.paddingSize;
-
-        math::TensorArchiver::Write(_output, "output", archiver);
     }
 
     template <typename ElementType>
@@ -155,7 +184,7 @@ namespace neural
         _layerParameters.outputPaddingParameters.paddingScheme = static_cast<PaddingScheme>(outputPaddingScheme);
         archiver["outputPaddingSize"] >> _layerParameters.outputPaddingParameters.paddingSize;
 
-        math::TensorArchiver::Read(_output, "output", archiver);
+        _output = TensorType(_layerParameters.outputShape);
 
         LayerSerializationContext<ElementType>* layerContext = dynamic_cast<LayerSerializationContext<ElementType>*>(&archiver.GetContext());
         if(layerContext != nullptr)
@@ -191,7 +220,6 @@ namespace neural
             }
         }
     }
-
 }
 }
 }

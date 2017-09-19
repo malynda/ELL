@@ -12,6 +12,23 @@
 #include "ReorderDataNode.h"
 #include "ReshapeImageNode.h"
 
+// BLAS
+#ifdef USE_BLAS
+#include "cblas.h"
+#else
+enum CBLAS_ORDER
+{
+    CblasRowMajor = 101,
+    CblasColMajor = 102
+};
+
+enum CBLAS_TRANSPOSE
+{
+    CblasNoTrans = 111,
+    CblasTrans = 112
+};
+#endif
+
 namespace ell
 {
 namespace nodes
@@ -26,6 +43,7 @@ namespace nodes
         void EmitMatrixMatrixMultiplyBlas(emitters::IRFunctionEmitter& function, bool transposeA, bool transposeB, int m, int n, int k, llvm::Value* A, int lda, llvm::Value* B, int ldb, llvm::Value* C, int ldc)
         {
             llvm::Function* gemm = function.GetModule().GetRuntime().GetGEMMFunction<ValueType>();
+
             emitters::IRValueList args{
                 function.Literal(CBLAS_ORDER::CblasRowMajor), // order
                 function.Literal(transposeA ? CBLAS_TRANSPOSE::CblasTrans : CBLAS_TRANSPOSE::CblasNoTrans), // transposeA
@@ -35,13 +53,13 @@ namespace nodes
                 function.Literal(k),
                 function.Literal(static_cast<ValueType>(1.0)), // alpha
                 A,
-                function.Literal(lda),
+                function.Literal(lda), // lda
                 B,
                 function.Literal(ldb), // ldb
                 function.Literal(static_cast<ValueType>(0.0)), // beta
                 C, // C (output)
-                function.Literal(ldc)
-            }; // ldc
+                function.Literal(ldc) // ldc
+            };
             function.Call(gemm, args);
         }
 
@@ -108,14 +126,6 @@ namespace nodes
     ConvolutionalLayerNode<ValueType>::ConvolutionalLayerNode(const model::PortElements<ValueType>& input, const predictors::neural::ConvolutionalLayer<ValueType>& layer)
         : NeuralNetworkLayerNode<ConvolutionalLayerNode<ValueType>, predictors::neural::ConvolutionalLayer<ValueType>, ValueType>(input, layer)
     {
-        // For convolutional layers, the input size _includes_ padding, for some reason. We need to undo that here:
-        auto& inputLayout = this->GetInputMemoryLayout();
-        auto numDimensions = this->NumInputDimensions();
-        for (int index = 0; index < numDimensions; ++index)
-        {
-            inputLayout.size[index] -= 2 * inputLayout.offset[index];
-            inputLayout.stride[index] -= 2 * inputLayout.offset[index];
-        }
     }
 
     template <typename ValueType>
@@ -165,7 +175,7 @@ namespace nodes
 
             // weights: numFilters x fieldVolumeSize == m x k
             // ShapedInput: fieldVolumeSize x outputRows == k x n
-            // Matrix multiply output:
+            // Matrix multiply output: numFilters x outputRows = m x n
             auto reshapeNode = transformer.AddNode<ReshapeImageNode<ValueType>>(newInput, inputLayout, convParams, outputImageWidth, outputImageHeight);
             auto matrixMultNode = transformer.AddNode<MatrixMatrixMultiplyNode<ValueType>>(weightsNode->output, m, n, k, lda, false, reshapeNode->output, ldb, false, ldc);
             auto reorderOutputNode = transformer.AddNode<ReorderDataNode<ValueType>>(matrixMultNode->output, outputShape, transposedOutputShape);

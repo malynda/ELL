@@ -83,6 +83,10 @@ namespace neural
     /// <summary> Helper function to determine if a PaddingParameters struct represents no padding </summary>
     static bool HasPadding(const PaddingParameters& padding) { return padding.paddingSize != 0; }
 
+    /// <summary> Get the padding value to fill with </summary>
+    template <typename ValueType>
+    ValueType GetPaddingValue(PaddingScheme paddingScheme);
+
     /// <summary> Common base class for a layer in a neural network. </summary>
     template <typename ElementType>
     class Layer : public utilities::IArchivable
@@ -129,15 +133,15 @@ namespace neural
         /// <returns> Reference to the output tensor. </returns>
         ConstTensorReferenceType GetOutput() const { return _output; }
 
-        /// <summary> Returns shape of the active part of the input tensor. </summary>
+        /// <summary> Returns shape of the input tensor, with padding added. </summary>
         ///
         /// <returns> Shape of the input tensor. </returns>
         virtual Shape GetInputShape() const { return _layerParameters.input.GetShape(); }
 
-        /// <summary> Returns shape of the input tensor with padding added. </summary>
+        /// <summary> Returns shape of the active area of the input tensor. </summary>
         ///
         /// <returns> Shape of the input tensor. </returns>
-        virtual Shape GetInputShapeWithPadding() const;
+        virtual Shape GetInputShapeMinusPadding() const;
 
         /// <summary> Returns shape of the output tensor, with padding added. </summary>
         ///
@@ -196,17 +200,16 @@ namespace neural
         /// <returns> The name of this type. </returns>
         virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
-        /// <summary> Adds an object's properties to an `Archiver` </summary>
-        ///
-        /// <param name="archiver"> The `Archiver` to add the values from the object to </param>
+    protected:
         virtual void WriteToArchive(utilities::Archiver& archiver) const override;
-
-        /// <summary> Sets the internal state of the object according to the archiver passed in </summary>
-        ///
-        /// <param name="archiver"> The `Archiver` to get state from </param>
         virtual void ReadFromArchive(utilities::Unarchiver& archiver) override;
 
     protected:
+        /// <summary> Returns a reference to the output tensor. </summary>
+        ///
+        /// <returns> Reference to the output tensor. </returns>
+        TensorReferenceType GetOutputTensor() { return _output; }
+
         /// <summary> Returns a read/write reference to the sub tensor of the output that does not contain padding. </summary>
         ///
         /// <returns> Read/write reference to the output tensor. </returns>
@@ -214,8 +217,10 @@ namespace neural
 
         /// <summary> Returns number of output rows minus padding. </summary>
         size_t NumOutputRowsMinusPadding() const { return _output.NumRows() - 2 * _layerParameters.outputPaddingParameters.paddingSize; }
+        
         /// <summary> Returns number of output columns minus padding. </summary>
         size_t NumOutputColumnsMinusPadding() const { return _output.NumColumns() - 2 * _layerParameters.outputPaddingParameters.paddingSize; }
+        
         /// <summary> Returns number of output channels. </summary>
         size_t NumOutputChannels() const { return _output.NumChannels(); };
 

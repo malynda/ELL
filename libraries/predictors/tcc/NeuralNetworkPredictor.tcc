@@ -15,6 +15,8 @@ namespace ell
 {
 namespace predictors
 {
+    constexpr int c_currentNeuralNetworkPredictorArchiveVersion = 1;
+
     template <typename ElementType>
     NeuralNetworkPredictor<ElementType>::NeuralNetworkPredictor(InputLayerReference&& inputLayer, Layers&& layers) :
         _inputLayer(std::move(inputLayer)),
@@ -103,6 +105,7 @@ namespace predictors
     void NeuralNetworkPredictor<ElementType>::ReadFromArchive(utilities::Unarchiver& archiver)
     {
         neural::LayerSerializationContext<ElementType> layerContext(archiver.GetContext());
+        RegisterNeuralNetworkPredictorTypes(layerContext);
         archiver.PushContext(layerContext);
 
         std::unique_ptr<neural::InputLayer<ElementType>> inputLayer;
@@ -140,5 +143,19 @@ namespace predictors
         context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::SoftmaxLayer<ElementType>>();
         context.GetTypeFactory().AddType<NeuralNetworkPredictor<ElementType>, NeuralNetworkPredictor<ElementType>>();
     }
+
+    template <typename ElementType>
+    utilities::ArchiveVersion NeuralNetworkPredictor<ElementType>::GetCurrentArchiveVersion()
+    {
+        return { c_currentNeuralNetworkPredictorArchiveVersion };        
+    }
+
+    template <typename ElementType>
+    utilities::ArchiveVersion NeuralNetworkPredictor<ElementType>::GetArchiveVersion() const
+    {
+        return GetCurrentArchiveVersion();
+    }
+
+
 }
 }

@@ -142,7 +142,7 @@ namespace utilities
         virtual void EndUnarchiveArrayItem(const std::string& typeName) override;
         virtual void EndUnarchiveArray(const char* name, const std::string& typeName) override;
 
-        virtual std::string BeginUnarchiveObject(const char* name, const std::string& typeName) override;
+        virtual ArchivedObjectInfo BeginUnarchiveObject(const char* name, const std::string& typeName) override;
         virtual void EndUnarchiveObject(const char* name, const std::string& typeName) override;
 
         virtual void EndUnarchiving() override;
@@ -152,7 +152,9 @@ namespace utilities
         void ReadFileHeader();
         void ReadFileFooter();
 
-        template <typename ValueType, IsFundamental<ValueType> concept = 0>
+        template <typename ValueType, IsIntegral<ValueType> concept = 0>
+        void ReadScalar(const char* name, ValueType& value);
+        template <typename ValueType, IsFloatingPoint<ValueType> concept = 0>
         void ReadScalar(const char* name, ValueType& value);
         void ReadScalar(const char* name, std::string& value);
         template <typename ValueType, IsFundamental<ValueType> concept = 0>

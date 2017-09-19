@@ -36,8 +36,9 @@ def parse_cfg(filename):
         layer_desc['type'] = layer[0].replace('[', '').replace(']', '')
         param_list = list(filter(None, layer[1].split('\n')))
         for param in param_list:
-            arg, val = param.split('=')
-            layer_desc[arg] = val
+            if ("=" in param):
+                arg, val = param.split('=')
+                layer_desc[arg] = val
         network.append(layer_desc)
 
     # add extra information needed, size calculations and properties like padding
@@ -205,7 +206,7 @@ def process_batch_normalization_layer(layer, apply_padding, mean_vals, variance_
     meanVector = ELL.FloatVector(mean_vals.ravel())
     varianceVector = ELL.FloatVector(variance_vals.ravel())
 
-    layers.append(ELL.FloatBatchNormalizationLayer(layerParameters, meanVector, varianceVector))
+    layers.append(ELL.FloatBatchNormalizationLayer(layerParameters, meanVector, varianceVector, 1e-6, ELL.EpsilonSummand_sqrtVariance))
 
     # Create Scaling Layer
     if (apply_padding):

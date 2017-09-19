@@ -1,47 +1,38 @@
-## Compiling ELL Models
+## Compiling ELL Models 
 
 ELL provides a very cool neural net model compiler that can target a specific platform and produce optimized
 code for that platform.  This helps to make your models run faster on low end hardware.
 
-So we will take the models we loaded, either from [darknet](darknet.md) or [cntk](cntk.md) and compile them
-for Raspberry Pi.
+So we will take the models we loaded, either from [Darknet](darknet.md) or [CNTK](cntk.md) and 
+show you how to compile them on your desktop machine (either Windows, Linux, or Mac), and also for Raspberry Pi.
 
-*Important* Before proceeding, first run the demo python script for the model of your choice (cntkDemo.py or darknetDemo.py). Besides loading the models, each script will convert the neural net to a .map file that represents the model in ELL's format. Depending on the neural network, the file can get quite large.
+*Important:* Before proceeding, first run the demo Python script for the model of your choice (cntkDemo.py or darknetDemo.py). Besides loading the models, each script will convert the neural net to a .map file that represents the model in ELL's format. Depending on the neural network, the file can get quite large.
 
-*Important* Make sure you have already built ELL in the Release configuration, so that you have the ELL compilation tools ready.
+*Important:* Make sure you have already built ELL in the `Release` configuration, so that you have the ELL compilation tools ready. 
 
-The steps below use a darknet model as an example.
+When you build ELL you will also get a copy of the tutorials/vision/gettingStarted folder copied to your `build` folder with some additional build generated scripts.
 
-First, we compile the model to LLVM intermediate representation (IR). 
+### Overview of the building process
 
-For example:
+Once a model has been imported into ELL, compiling an ELL model is a two-stage process:
 
-    ..\..\..\bin\Release\compile -imap darknet.map -cfn darknet -m clockStep -of darknet.ll
+1. Generating the model code from the imported model (e.g. darknetReference.map) to generate object and wrapper code for the target device. This stage is run on a desktop machine and performs the following steps:
+    * Compile the model from ELL, emitting LLVM IR
+    * Compiling the LLVM IR, generating model object code
+    * Generate the SWIG wrapper code (so you can invoke your model using Python)
 
-We will be running python on the Raspberry Pi to use the model. So, we need to generate the python wrapper code for the model. 
+2. Compiling the model code on target device into a Python module. 
 
-For example:
+    *Note: Stage 2 can also be run on the desktop machine, if you have the cross-compilation toolchain available. Cross-compilation is a more advanced scenario that we plan to cover in a future section / tutorial.*
 
-    ..\..\..\bin\Release\compile -imap darknet.map -cfn darknet -m clockStep -o swig -of darknet.i
+With the above background, let's get started. The compilation workflow is similar for each model, so we'll use the Darknet reference model in our walkthrough.
 
-Both commands above will take a while to run because of the sizes of the neural networks. We are actively working on ways to reduce the time... stay tuned.
+### Compiling
 
-Still to add:
-- Run SWIG 
-swig.exe -python -c++ -Fmicrosoft -py3 -outdir output -c++ ^
--I<ELL_root>/interfaces/common/include ^
--I<ELL_root>/interfaces/common ^
--I<ELL_root>/libraries/emitters/include ^
--o output/darknetPYTHON_wrap.cxx ^
-darknet.i
+Please choose your build platform:
 
-- Compile IR (need to specify target triple)
-llc darknet.ll -o darknet.o -filetype=obj -relocation-model=pic
+- [Compiling on Windows](compiling-Windows.md)
+- [Compiling on Linux](compiling-Linux.md)
+- [Compiling for Raspberry Pi](compiling-Pi3.md)
 
-- Generate CMakeLists.txt for module
-- Copy model files to Pi
-- Compile model files on Pi
-- Run a modified version of the demo script
-
-
-
+    

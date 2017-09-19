@@ -27,7 +27,7 @@ namespace emitters
         std::string c_linuxTriple = "x86_64-pc-linux-gnu";
         std::string c_windowsTriple = "x86_64-pc-win32";
         std::string c_armTriple = "armv7-linux-gnueabihf";
-        std::string c_arm64Triple = "aarch64-unknown-linux-gnu"; // Dragonboard
+        std::string c_arm64Triple = "aarch64-unknown-linux-gnu"; // DragonBoard
         std::string c_iosTriple = "aarch64-apple-ios"; // alternates: "arm64-apple-ios7.0.0", "thumbv7-apple-ios7.0"
         // clang settings:
         // triple=thumbv7-apple-ios7.0
@@ -37,7 +37,7 @@ namespace emitters
         std::string c_linuxDataLayout = "e-m:e-i64:64-f80:128-n8:16:32:64-S128";
         std::string c_windowsDataLayout = "e-m:w-i64:64-f80:128-n8:16:32:64-S128";
         std::string c_armDataLayout = "e-m:e-p:32:32-i64:64-v128:64:128-a:0:32-n32-S64";
-        std::string c_arm64DataLayout = "e-m:e-i64:64-i128:128-n32:64-S128"; // Dragonboard
+        std::string c_arm64DataLayout = "e-m:e-i64:64-i128:128-n32:64-S128"; // DragonBoard
         std::string c_iosDataLayout = "e-m:o-i64:64-i128:128-n32:64-S128";
 
         static const std::string c_literalVar = "c_";
@@ -96,6 +96,13 @@ namespace emitters
                 _parameters.targetDevice.numBits = 64;
                 _parameters.targetDevice.cpu = "cortex-a53";
             }
+            else if (_parameters.targetDevice.deviceName == "aarch64") // arm64 linux (DragonBoard)
+            {
+                // need to set arch to aarch64?
+                _parameters.targetDevice.triple = c_arm64Triple;
+                _parameters.targetDevice.dataLayout = c_arm64DataLayout;
+                _parameters.targetDevice.numBits = 64;
+            }
             else if (_parameters.targetDevice.deviceName == "ios")
             {
                 _parameters.targetDevice.triple = c_iosTriple;
@@ -108,7 +115,13 @@ namespace emitters
         }
         else
         {
-            if (_parameters.targetDevice.cpu == "cortex-m4")
+            if (_parameters.targetDevice.cpu == "cortex-m0")
+            {
+                _parameters.targetDevice.triple = "armv6m-unknown-none-eabi";
+                _parameters.targetDevice.features = "+armv6-m,+v6m";
+                _parameters.targetDevice.architecture = "thumb";
+            }
+            else if (_parameters.targetDevice.cpu == "cortex-m4")
             {
                 _parameters.targetDevice.triple = "arm-none-eabi";
                 _parameters.targetDevice.features = "+armv7e-m,+v7,soft-float";
@@ -140,6 +153,10 @@ namespace emitters
         else if (extension == "s" || extension == "asm")
         {
             return ModuleOutputFormat::assembly;
+        }
+        else if (extension == "s" || extension == "asm")
+        {
+            return ModuleOutputFormat::objectCode;
         }
         else if (extension == "h")
         {

@@ -1,0 +1,4 @@
+main:
+    - { url: '/ELL/gallery/', text: 'Gallery' }
+    - { url: '/ELL/', text: 'About' }
+    - { url: 'https://github.com/microsoft/ELL', text: 'GitHub' } 

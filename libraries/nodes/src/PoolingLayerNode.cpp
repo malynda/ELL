@@ -17,22 +17,6 @@ namespace ell
 {
 namespace nodes
 {
-    namespace
-    {
-        Shape GetCumulativeIncrement(const Shape& extents)
-        {
-            int numDimensions = extents.size();
-            Shape result(numDimensions);
-            int prevScale = 1;
-            for (int index = numDimensions - 1; index >= 0; --index)
-            {
-                result[index] = prevScale;
-                prevScale = prevScale * extents[index];
-            }
-            return result;
-        }
-    }
-
     template <typename ValueType>
     class MaxPoolingFunction
     {
@@ -154,28 +138,26 @@ namespace nodes
         llvm::Value* pInput = compiler.EnsurePortEmitted(input);
         llvm::Value* pOutput = compiler.EnsurePortEmitted(output);
 
-        // compile-time params
-        auto&& inputLayout = this->GetInputMemoryLayout();
-        auto&& inputSize = inputLayout.size;
-        auto&& inputStride = inputLayout.stride;
-        auto&& inputOffset = inputLayout.offset;
-        auto&& inputSizeWithPadding = this->GetLayer().GetInputShapeWithPadding();
+        // Input / output memory layouts
+        const auto& inputLayout = this->GetInputMemoryLayout();
+        const auto& inputSize = inputLayout.size;
+        const auto& inputStride = inputLayout.stride;
+        const auto& inputOffset = inputLayout.offset;
 
-        auto&& outputLayout = this->GetOutputMemoryLayout();
-        auto&& outputSize = outputLayout.size;
-        auto&& outputStride = outputLayout.stride;
-        auto&& outputOffset = outputLayout.offset;
-        auto&& outputSizeWithPadding = this->GetLayer().GetOutputShape();
+        const auto& outputLayout = this->GetOutputMemoryLayout();
+        const auto& outputSize = outputLayout.size;
+        const auto& outputStride = outputLayout.stride;
+        const auto& outputOffset = outputLayout.offset;
 
         // Calculate cumulative increment for each dimension
-        // TODO: include these in the memory layout struct
-        Shape inputIncrement = GetCumulativeIncrement(inputStride);
-        Shape outputIncrement = GetCumulativeIncrement(outputStride);
+        Shape inputIncrement = inputLayout.GetCumulativeIncrement();
+        Shape outputIncrement = outputLayout.GetCumulativeIncrement();
 
         const auto& layerParameters = this->GetLayer().GetLayerParameters();
 
         // Calculate input dimension parameters
         size_t inputPaddingSize = layerParameters.inputPaddingParameters.paddingSize;
+        size_t outputPaddingSize = layerParameters.outputPaddingParameters.paddingSize;
 
         int inputDepth = inputSize[2];
         int inputColumns = inputSize[1];
@@ -197,7 +179,10 @@ namespace nodes
         int paddingColumnOffset = -inputPaddingSize;
         int paddingRowOffset = -inputPaddingSize;
 
-        bool canSkipBoundsCheck = (inputPaddingSize <= inputOffset[0]) && (outputColumns * stride + poolingSize <= inputColumns) && (outputRows * stride + poolingSize <= inputRows);
+        // If the incoming memory is larger enough that our pooling windows never exceed its bounds, we can skip the bounds check (and assume the extra memory contains the correct padding value)
+        bool canSkipBoundsCheck = (inputPaddingSize <= inputOffset[0]) &&
+                                  ((outputColumns - 1) * stride + 1 + (poolingSize / 2) <= (inputColumns + 2 * inputPaddingSize)) &&
+                                  ((outputRows - 1) * stride + 1 + (poolingSize / 2) <= (inputRows + 2 * inputPaddingSize));
 
         // TODO: add prologue / epilogue for padded / out-of-bounds values
 
@@ -254,7 +239,6 @@ namespace nodes
                     // outputLocationOffset is the offset to the output entry
                     llvm::Value* inputLocationOffset = channelInputOffset;
                     llvm::Value* outputLocationOffset = channelOutputOffset;
-
 
                     // Now loop over the input window
                     //

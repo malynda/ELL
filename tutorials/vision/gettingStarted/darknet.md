@@ -41,6 +41,10 @@ passing a command line argument to the script as follows:
 
     python darknetDemo.py 1
 
+Note: if you don't have a video camera, you can run the model on an image file by specifying the filename in place of the camera index.
+
+    python darknetDemo.py impala.jpg
+
 You should see some output like this while it is loading the model:
 
     (py35) D:\temp\ELL\tutorials\vision\gettingStarted>python darknet.py 1
@@ -68,25 +72,4 @@ classification labels at the top, like this:
 
 ## Compilation
 
-Ok, now on to compiling. A sample script for the the Darknet Reference model was created for you. 
-
-On Windows, run 
-
-    compile_darknetReference.cmd
-
-On Linux / Mac, run
-
-    sh compile_darknetReference.sh
-
-This script will:
-
-* Compile the model from ELL, emitting LLV IR
-* Compiling the LLVM IR, generating model object file
-* Generate SWIG interface (for Python bindings)
-* Running disutils setup to compile and link model + SWIG wrappers into a Python module, and install package locally
-
-The compiled model can now also be accessed from Python. To create a compiled model for the Raspberry Pi, copy the files in this directory over and run the compile script on the Pi.
-
-To test it out, run the compiled model demo app:
-
-    python compiledDarknetDemo.py
+Once you've tested that the imported model works, you can now proceed with [compiling the model and running it on different devices](compiling.md).

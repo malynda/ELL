@@ -37,18 +37,23 @@ void TestFloatNode();
 //
 // NN layer nodes
 //
-void TestNeuralNetworkPredictorNode();
+void TestNeuralNetworkPredictorNode1();
 void TestNeuralNetworkPredictorNode2();
+void TestNeuralNetworkPredictorNode3();
+void TestNeuralNetworkPredictorNode4();
 
 enum class ConvolutionType { GEMM, Diagonal};
 
+void TestInputLayerNode(size_t outputPadding = 0);
 void TestReLUActivationLayerNode(size_t inputPadding = 0, size_t outputPadding = 0);
 void TestLeakyReLUActivationLayerNode(size_t inputPadding = 0, size_t outputPadding = 0);
 void TestSigmoidActivationLayerNode(size_t inputPadding = 0, size_t outputPadding = 0);
 void TestBatchNormalizationLayerNode(size_t inputPadding = 0, size_t outputPadding = 0);
 void TestBiasLayerNode(size_t inputPadding = 0, size_t outputPadding = 0);
 void TestBinaryConvolutionalLayerNode(size_t inputPadding = 1, size_t outputPadding = 0);
+void TestBinaryConvolutionalLayerNode2(size_t inputPadding = 1, size_t outputPadding = 0);
 void TestConvolutionalLayerNode(ConvolutionType convolutionType, size_t inputPadding = 1, size_t outputPadding = 0);
+void TestConvolutionalLayerNode2(ConvolutionType convolutionType, size_t inputPadding = 1, size_t outputPadding = 0);
 void TestFullyConnectedLayerNode(size_t inputPadding = 0, size_t outputPadding = 0);
 void TestMaxPoolingLayerNode(size_t inputPadding = 0, size_t outputPadding = 0);
 void TestMeanPoolingLayerNode(size_t inputPadding = 0, size_t outputPadding = 0);

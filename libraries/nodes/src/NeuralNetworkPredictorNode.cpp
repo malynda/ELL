@@ -81,18 +81,22 @@ namespace nodes
         auto inputShape = inputLayer.GetInputShape();
         auto outputPadding = inputLayer.GetLayerParameters().outputPaddingParameters;
         auto padding = outputPadding.paddingSize;
+        if (padding != 0)
+        {
+            // If the input layer includes padding on its output, add a ReorderDataNode to take care of it.
+            DataShape inputNodeInputShape({ inputShape[0], inputShape[1], inputShape[2] }, { 0, 0, 0 }, { 2, 1, 0 });
+            DataShape inputNodeOutputShape({ inputShape[0], inputShape[1], inputShape[2] }, { padding, padding, 0 }, { 2, 1, 0 });
+            auto paddedInputNode = transformer.AddNode<ReorderDataNode<ValueType>>(newInputElements, inputNodeInputShape, inputNodeOutputShape, predictors::neural::GetPaddingValue<ValueType>(outputPadding.paddingScheme));
+            newInputElements = paddedInputNode->output;
+        }
 
-        DataShape inputNodeInputShape({ inputShape[0], inputShape[1], inputShape[2] });
-        DataShape inputNodeOutputShape({ inputShape[0] + padding, inputShape[1] + padding, inputShape[2] }, { padding, padding, 0 });
-        auto padedInputNode = transformer.AddNode<ReorderDataNode<ValueType>>(newInputElements, inputNodeInputShape, inputNodeOutputShape);
-
-        size_t prevOutputSize = GetShapeSize(inputLayer.GetOutputShape());
-        auto layerInputs = model::PortElements<ValueType>(padedInputNode->output);
+        size_t prevOutputSize = GetShapeSize(inputLayer.GetOutputShape()); // With padding
+        auto layerInputs = model::PortElements<ValueType>(newInputElements);
         Node* lastNode = nullptr;
         for (const auto& layer : _predictor.GetLayers())
         {
             auto numInputs = GetShapeSize(layer->GetInputShape());
-            assert(prevOutputSize == GetShapeSize(layer->GetInputShape()));
+            assert(prevOutputSize == numInputs);
             auto layerNode = AddLayerNode(transformer, *layer, layerInputs);
             prevOutputSize = GetShapeSize(layer->GetOutputShape());
             layerInputs = model::PortElements<ValueType>{ *layerNode->GetOutputPort(0) };
