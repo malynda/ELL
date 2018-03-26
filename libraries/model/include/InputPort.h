@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "Node.h"
 #include "OutputPort.h"
 #include "Port.h"
 #include "PortElements.h"
@@ -16,11 +17,8 @@
 #include "Exception.h"
 #include "IArchivable.h"
 
-// data
-#include "IndexValue.h"
-
 // stl
-#include <cassert>
+#include <string>
 #include <vector>
 
 namespace ell
@@ -49,6 +47,8 @@ namespace model
         /// <param name="name"> The name of this port </param>
         InputPortBase(const class Node* owningNode, const PortElementsBase& inputs, const std::string& name);
 
+        ~InputPortBase() override = default;
+
         /// <summary> Returns the list of nodes this input port gets values from </summary>
         ///
         /// <returns> The list nodes this input port gets values from </returns>
@@ -62,7 +62,7 @@ namespace model
         /// <summary> The size of the output </summary>
         ///
         /// <returns> The size of the output </returns>
-        virtual size_t Size() const override { return _inputElements.Size(); }
+        size_t Size() const override { return _inputElements.Size(); }
 
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
@@ -72,7 +72,7 @@ namespace model
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+        std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
         /// <summary>Gets the port element at the specified index</summary>
         ///
@@ -145,11 +145,11 @@ namespace model
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+        std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
     protected:
-        virtual void WriteToArchive(utilities::Archiver& archiver) const override;
-        virtual void ReadFromArchive(utilities::Unarchiver& archiver) override;
+        void WriteToArchive(utilities::Archiver& archiver) const override;
+        void ReadFromArchive(utilities::Unarchiver& archiver) override;
 
     private:
         PortElements<ValueType> _input;

@@ -11,7 +11,6 @@
 #include "TypeTraits.h"
 
 // stl
-#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -43,13 +42,19 @@ namespace utilities
         static constexpr bool value = type::value;
     };
 
+    /// <summary> Utility function to get type name from a template parameter </summary>
+    ///
+    /// <typeparam name="Type"> The type (e.g., 'double') </typeparam>
+    template <typename Type>
+    std::string GetTypeName();
+    
     /// <summary> Utility function to get templated type names (e.g., Vector<double>) </summary>
     ///
     /// <param name="baseType"> The base type (e.g., 'Vector') </param>
     /// <typeparam name="Types"> The templated type (e.g., 'double') </typeparam>
     template <typename... Types>
     std::string GetCompositeTypeName(std::string baseType);
-
+    
     /// <summary> Utility function to get templated type names (e.g., Vector<double>) </summary>
     ///
     /// <param name="baseType"> The base type (e.g., 'Vector') </param>
@@ -348,26 +353,6 @@ namespace utilities
         ///
         /// <returns> The serialization name. </returns>
         static std::string GetName() { return "IArchivable"; }
-    };
-
-    /// <summary> Class used to get information about the std::chrono::steady_clock type. </summary>
-    template <>
-    struct TypeName<std::chrono::steady_clock>
-    {
-        /// <summary> Gets the serialization name of the type. </summary>
-        ///
-        /// <returns> The serialization name. </returns>
-        static std::string GetName() { return "std::chrono::steady_clock"; }
-    };
-
-    /// <summary> Class used to get information about the std::chrono::system_clock type. </summary>
-    template <>
-    struct TypeName<std::chrono::system_clock>
-    {
-        /// <summary> Gets the serialization name of the type. </summary>
-        ///
-        /// <returns> The serialization name. </returns>
-        static std::string GetName() { return "std::chrono::system_clock"; }
     };
 }
 }

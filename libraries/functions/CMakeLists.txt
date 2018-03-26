@@ -23,10 +23,6 @@ source_group("include" FILES ${include})
 
 add_library(${library_name} ${src} ${include})
 target_include_directories(${library_name} PUBLIC include)
-if(CMAKE_COMPILER_IS_GNUCXX)
-  target_compile_options(${library_name} PRIVATE -fPIC)
-endif()
-
 target_link_libraries(${library_name} utilities math)
 
 set_property(TARGET ${library_name} PROPERTY FOLDER "libraries")
@@ -51,3 +47,4 @@ target_link_libraries(${test_name} functions testing utilities math)
 set_property(TARGET ${test_name} PROPERTY FOLDER "tests")
 
 add_test(NAME ${test_name} COMMAND ${test_name})
+set_test_library_path(${test_name})

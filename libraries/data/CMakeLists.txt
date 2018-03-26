@@ -7,9 +7,12 @@ set (library_name data)
 set (src src/Dataset.cpp
          src/DataVector.cpp
          src/DataVectorOperations.cpp
+         src/DenseDataVector.cpp
          src/GeneralizedSparseParsingIterator.cpp
          src/SequentialLineIterator.cpp
+         src/SparseDataVector.cpp
          src/TextLine.cpp
+         src/WeightClassIndex.cpp
          src/WeightLabel.cpp)
 
 set (include include/AutoDataVector.h
@@ -29,6 +32,7 @@ set (include include/AutoDataVector.h
              include/TransformedDataVector.h
              include/TransformingIndexValueIterator.h
              include/TextLine.h
+             include/WeightClassIndex.h
              include/WeightLabel.h
              )
 
@@ -57,10 +61,13 @@ source_group("doc" FILES ${doc})
 
 add_library(${library_name} ${src} ${include} ${tcc} ${doc})
 target_include_directories(${library_name} PUBLIC include)
-if(CMAKE_COMPILER_IS_GNUCXX)
-  target_compile_options(${library_name} PRIVATE -fPIC)
-endif()
 target_link_libraries(${library_name} math utilities)
+
+# MSVC emits warnings incorrectly when mixing inheritance, templates,
+# and member function definitions outside of class definitions
+if(MSVC)
+target_compile_options(${library_name} PRIVATE /wd4505)
+endif()
 
 set_property(TARGET ${library_name} PROPERTY FOLDER "libraries")
 
@@ -92,3 +99,4 @@ copy_shared_libraries(${test_name})
 set_property(TARGET ${test_name} PROPERTY FOLDER "tests")
 
 add_test(NAME ${test_name} COMMAND ${test_name})
+set_test_library_path(${test_name})

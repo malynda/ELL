@@ -12,7 +12,7 @@ namespace utilities
 {
     template <typename ErrorCodeType>
     ErrorCodeException<ErrorCodeType>::ErrorCodeException(ErrorCodeType errorCode, const std::string& message)
-        : _errorCode(errorCode), _message(message)
+        : Exception(message), _errorCode(errorCode)
     {
     }
 }

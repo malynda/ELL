@@ -2,7 +2,7 @@
 //
 //  Project:  Embedded Learning Library (ELL)
 //  File:     OutputStreamImpostor.tcc (utilities)
-//  Authors:  Chuck Jacobs, Ofer Dekel
+//  Authors:  Chuck Jacobs, Ofer Dekel, Kern Handa
 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -11,10 +11,10 @@ namespace ell
 namespace utilities
 {
     template <typename T>
-    OutputStreamImpostor& OutputStreamImpostor::operator<<(const T& value)
+    std::ostream& OutputStreamImpostor::operator<<(T&& value)
     {
-        *_outputStream << value;
-        return *this;
+        _outputStream.get() << value;
+        return _outputStream;
     }
 }
 }

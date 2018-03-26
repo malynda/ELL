@@ -28,7 +28,7 @@ namespace nodes
     namespace
     {
         // Handy helper function
-        size_t GetShapeSize(const math::Triplet& shape)
+        size_t GetShapeSize(const math::IntegerTriplet& shape)
         {
             return shape[0] * shape[1] * shape[2];
         }
@@ -36,13 +36,13 @@ namespace nodes
 
     template <typename ValueType>
     NeuralNetworkPredictorNode<ValueType>::NeuralNetworkPredictorNode()
-        : Node({ &_input }, { &_output }), _input(this, {}, inputPortName), _output(this, outputPortName, 0)
+        : Node({ &_input }, { &_output }), _input(this, {}, defaultInputPortName), _output(this, defaultOutputPortName, 0)
     {
     }
 
     template <typename ValueType>
     NeuralNetworkPredictorNode<ValueType>::NeuralNetworkPredictorNode(const model::PortElements<ValueType>& input, const PredictorType& predictor)
-        : Node({ &_input }, { &_output }), _input(this, input, inputPortName), _output(this, outputPortName, GetShapeSize(predictor.GetOutputShape())), _predictor(predictor)
+        : Node({ &_input }, { &_output }), _input(this, input, defaultInputPortName), _output(this, defaultOutputPortName, GetShapeSize(predictor.GetOutputShape())), _predictor(predictor)
     {
         assert(input.Size() == GetShapeSize(_predictor.GetInputShape()));
     }
@@ -51,7 +51,7 @@ namespace nodes
     void NeuralNetworkPredictorNode<ValueType>::WriteToArchive(utilities::Archiver& archiver) const
     {
         Node::WriteToArchive(archiver);
-        archiver[inputPortName] << _input;
+        archiver[defaultInputPortName] << _input;
         archiver["predictor"] << _predictor;
     }
 
@@ -60,7 +60,7 @@ namespace nodes
     {
         PredictorType::RegisterNeuralNetworkPredictorTypes(archiver.GetContext());
         Node::ReadFromArchive(archiver);
-        archiver[inputPortName] >> _input;
+        archiver[defaultInputPortName] >> _input;
         archiver["predictor"] >> _predictor;
     }
 
@@ -75,29 +75,64 @@ namespace nodes
     template <typename ValueType>
     bool NeuralNetworkPredictorNode<ValueType>::Refine(model::ModelTransformer& transformer) const
     {
+        // TODO:
+        //
+        // Adjust the padding and data ordering depending on what options were set
+        //
+        // Constraints:
+        //   diagonal conv: interleaved order, data padding
+        //   unrolled conv: planar order, no padding
+        //
+        // options:
+        //
+        // - convolution method
+        // - always use regular 'normal' convolution
+        // - always use transposed 'normal' convolution
+        // - threshold to switch between regular and transposed 'normal' conv (ratio of # memcopies?)
+        //
+        // - always revert to interleaved order
+        // - always revert to planar order
+        // - keep existing order as long as possible
+        // - choose best order
+
+        // Options
+        NetworkCompileOptions options;
+        options.useDiagonalConvolution = false; // (true implies rcd order, false implies drc order)
+        options.alwaysConvertToInterleaved = true;
+        options.transposeReceptiveFieldMatrix = false;
+
+        // State
+        NetworkCompileState state;
+        state.isInterleavedOrder = true;
+
         auto newInputElements = transformer.TransformPortElements(_input.GetPortElements());
 
         const auto& inputLayer = _predictor.GetInputLayer();
         auto inputShape = inputLayer.GetInputShape();
         auto outputPadding = inputLayer.GetLayerParameters().outputPaddingParameters;
         auto padding = outputPadding.paddingSize;
+
         if (padding != 0)
         {
-            // If the input layer includes padding on its output, add a ReorderDataNode to take care of it.
-            DataShape inputNodeInputShape({ inputShape[0], inputShape[1], inputShape[2] }, { 0, 0, 0 }, { 2, 1, 0 });
-            DataShape inputNodeOutputShape({ inputShape[0], inputShape[1], inputShape[2] }, { padding, padding, 0 }, { 2, 1, 0 });
-            auto paddedInputNode = transformer.AddNode<ReorderDataNode<ValueType>>(newInputElements, inputNodeInputShape, inputNodeOutputShape, predictors::neural::GetPaddingValue<ValueType>(outputPadding.paddingScheme));
+            // If the input layer wants padding on its output, add a ReorderDataNode to add padding
+            model::PortMemoryLayout inputNodeShape({ (int)inputShape.NumRows(), (int)inputShape.NumColumns(), (int)inputShape.NumChannels() });
+            model::PortMemoryLayout paddedInputNodeShape({ (int)inputShape.NumRows(), (int)inputShape.NumColumns(), (int)inputShape.NumChannels() }, { (int)padding, (int)padding, 0 });
+            auto paddedInputNode = transformer.AddNode<ReorderDataNode<ValueType>>(newInputElements, inputNodeShape, paddedInputNodeShape, predictors::neural::GetPaddingValue<ValueType>(outputPadding.paddingScheme));
             newInputElements = paddedInputNode->output;
         }
 
         size_t prevOutputSize = GetShapeSize(inputLayer.GetOutputShape()); // With padding
+        UNUSED(prevOutputSize);
         auto layerInputs = model::PortElements<ValueType>(newInputElements);
-        Node* lastNode = nullptr;
+        NeuralNetworkLayerNodeBase<ValueType>* lastNode = nullptr;
+
         for (const auto& layer : _predictor.GetLayers())
         {
             auto numInputs = GetShapeSize(layer->GetInputShape());
+            DEBUG_USED(numInputs);
             assert(prevOutputSize == numInputs);
-            auto layerNode = AddLayerNode(transformer, *layer, layerInputs);
+            auto layerNode = AddLayerNode(transformer, *layer, layerInputs, options, state);
+
             prevOutputSize = GetShapeSize(layer->GetOutputShape());
             layerInputs = model::PortElements<ValueType>{ *layerNode->GetOutputPort(0) };
             lastNode = layerNode;
@@ -111,7 +146,7 @@ namespace nodes
     void NeuralNetworkPredictorNode<ValueType>::Compute() const
     {
         auto inputDataVector = typename PredictorType::DataVectorType(_input.GetIterator());
-        _output.SetOutput({ _predictor.Predict(inputDataVector) });
+        _output.SetOutput(_predictor.Predict(inputDataVector));
     }
 
     // explicit specialization for float, double

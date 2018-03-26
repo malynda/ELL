@@ -16,9 +16,43 @@ namespace utilities
     namespace VariantDetail
     {
         //
+        // Operator helpers
+        //
+        template <typename ValueType>
+        using IsIncrementable = typename std::enable_if_t<(std::is_integral<std::decay_t<ValueType>>::value && !std::is_same<std::decay_t<ValueType>, bool>::value) || std::is_floating_point<std::decay_t<ValueType>>::value, bool>;
+        template <typename ValueType>
+        using IsNotIncrementable = typename std::enable_if_t<!((std::is_integral<std::decay_t<ValueType>>::value && !std::is_same<std::decay_t<ValueType>, bool>::value) || std::is_floating_point<std::decay_t<ValueType>>::value), bool>;
+
+        template <typename ValueType, IsIncrementable<ValueType> concept = true>
+        void Increment(ValueType& value)
+        {
+            ++value;
+        }
+
+        template <typename ValueType, IsNotIncrementable<ValueType> concept = true>
+        void Increment(ValueType& value)
+        {
+            UNUSED(value);
+            throw utilities::InputException(utilities::InputExceptionErrors::typeMismatch);
+        };
+
+        template <typename ValueType, IsIncrementable<ValueType> concept = true>
+        void Decrement(ValueType& value)
+        {
+            --value;
+        }
+
+        template <typename ValueType, IsNotIncrementable<ValueType> concept = true>
+        void Decrement(ValueType& value)
+        {
+            UNUSED(value);
+            throw utilities::InputException(utilities::InputExceptionErrors::typeMismatch);
+        }
+
+        //
         // VariantBase --- private implementation class used by Variant
         //
-        class VariantBase
+        class VariantBase : public ArchivedAsPrimitive
         {
         public:
             virtual ~VariantBase() = default;
@@ -44,15 +78,23 @@ namespace utilities
             virtual long double GetFloatValue() const = 0;
             virtual void SetIntValue(intmax_t value) = 0;
             virtual void SetFloatValue(long double value) = 0;
+            static std::string GetTypeName() { return "VariantBase"; }
+            std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
-            virtual void ArchiveProperty(const char* name, Archiver& archiver) const = 0;
-            virtual void UnarchiveProperty(const char* name, Unarchiver& archiver, SerializationContext& context) = 0;
+            // operators
+            virtual void operator++() { throw utilities::InputException(utilities::InputExceptionErrors::typeMismatch); };
+            virtual void operator++(int) { throw utilities::InputException(utilities::InputExceptionErrors::typeMismatch); };
+            virtual void operator--() { throw utilities::InputException(utilities::InputExceptionErrors::typeMismatch); };
+            virtual void operator--(int) { throw utilities::InputException(utilities::InputExceptionErrors::typeMismatch); };
 
         private:
             friend class ell::utilities::Variant;
 
             template <typename ValueType>
-            ValueType GetValue() const;
+            ValueType& GetValue();
+
+            template <typename ValueType>
+            const ValueType& GetValue() const;
 
             template <typename ValueType>
             void SetValue(ValueType&& value);
@@ -76,31 +118,39 @@ namespace utilities
             VariantDerived(const ValueType& val);
 
         protected:
+            ValueType& GetValue() { return _value; }
             const ValueType& GetValue() const { return _value; }
             void SetValue(const ValueType& value);
 
-            virtual std::unique_ptr<VariantBase> Clone() const override;
-            virtual std::string ToString() const override;
-            virtual std::string GetStoredTypeName() const override;
-            virtual bool IsPrimitiveType() const override { return std::is_fundamental<ValueType>::value; }
-            virtual bool IsIntegralType() const override { return std::is_integral<ValueType>::value; }
-            virtual bool IsFloatingPointType() const override { return std::is_floating_point<ValueType>::value; }
-            virtual bool IsEnumType() const override { return std::is_enum<ValueType>::value; }
+            std::unique_ptr<VariantBase> Clone() const override;
+            std::string ToString() const override;
+            std::string GetStoredTypeName() const override;
+            bool IsPrimitiveType() const override { return std::is_fundamental<ValueType>::value; }
+            bool IsIntegralType() const override { return std::is_integral<ValueType>::value; }
+            bool IsFloatingPointType() const override { return std::is_floating_point<ValueType>::value; }
+            bool IsEnumType() const override { return std::is_enum<ValueType>::value; }
 
-            virtual void ParseInto(const std::string& s) override;
-            virtual bool TryParseInto(const std::string& s) override;
+            void ParseInto(const std::string& s) override;
+            bool TryParseInto(const std::string& s) override;
 
-            virtual bool IsIArchivable() const override { return !IsPrimitiveType(); }
-            virtual bool IsPointer() const override { return std::is_pointer<ValueType>::value; }
+            bool IsIArchivable() const override { return !IsPrimitiveType(); }
+            bool IsPointer() const override { return std::is_pointer<ValueType>::value; }
 
             // Getting value as a fundamental type (of the largest width)
-            virtual intmax_t GetIntValue() const override;
-            virtual long double GetFloatValue() const override;
-            virtual void SetIntValue(intmax_t value) override;
-            virtual void SetFloatValue(long double value) override;
+            intmax_t GetIntValue() const override;
+            long double GetFloatValue() const override;
+            void SetIntValue(intmax_t value) override;
+            void SetFloatValue(long double value) override;
 
-            virtual void ArchiveProperty(const char* name, Archiver& archiver) const override;
-            virtual void UnarchiveProperty(const char* name, Unarchiver& archiver, SerializationContext& context) override;
+            void operator++() override { Increment(_value); }
+            void operator++(int)override { Increment(_value); }
+            void operator--() override { Decrement(_value); }
+            void operator--(int)override { Decrement(_value); }
+
+            static std::string GetTypeName() { return GetCompositeTypeName<ValueType>("VariantDerived"); }
+            std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+            void WriteToArchive(utilities::Archiver& archiver) const override;
+            void ReadFromArchive(utilities::Unarchiver& archiver) override;
 
         private:
             friend class Variant;
@@ -121,6 +171,7 @@ namespace utilities
         template <typename ValueType>
         auto GetValueStringHelper(const ValueType& value, ...) -> std::string
         {
+            UNUSED(value);
             return "";
         }
 
@@ -141,6 +192,8 @@ namespace utilities
         template <typename ValueType>
         bool TryParseValueHelper(const std::string& s, ValueType& value, ...)
         {
+            UNUSED(s);
+            UNUSED(value);
             return false;
         }
 
@@ -173,7 +226,7 @@ namespace utilities
         template <typename ValueType>
         bool TryParseArchivable(std::string s, ValueType& value)
         {
-            if(std::is_base_of<ArchivedAsPrimitive, std::decay_t<ValueType>>())
+            if (std::is_base_of<ArchivedAsPrimitive, std::decay_t<ValueType>>())
             {
                 s = std::string("\"") + s + std::string("\"");
             }
@@ -207,6 +260,7 @@ namespace utilities
         template <typename InputValueType, typename OutputValueType>
         bool TryConvertValueHelper(const InputValueType& input, OutputValueType& output, ...)
         {
+            UNUSED(input, output);
             return false;
         }
 
@@ -273,56 +327,77 @@ namespace utilities
         template <typename T, CanNotCastToInt<T> = true>
         intmax_t CastToIntMax(T&& value)
         {
+            UNUSED(value);
             return 0;
         }
 
-        template <typename T, IsFundamental<T> = 0>
+        template <typename T, IsFundamental<T> = true>
         long double CastToLongDouble(T&& value)
         {
             return static_cast<long double>(value);
         }
 
-        template <typename T, IsNotFundamental<T> = 0>
+        template <typename T, IsNotFundamental<T> = true>
         long double CastToLongDouble(T&& value)
         {
+            UNUSED(value);
             return 0;
         }
 
-        // Helper functions to allow SFINAE to select between implementations of ArchiveProperty
-        template <typename ValueType, IsFundamental<ValueType> concept = 0>
-        void ArchiveValue(Archiver& archiver, const char* name, ValueType&& value)
+        // Helper functions to allow SFINAE to select between implementations of Archiver::operator<<
+        template <typename ValueType, IsArchivableVariantType<ValueType> concept = true>
+        void ArchiveValue(Archiver& archiver, ValueType&& value)
         {
-            archiver.Archive(name, value);
+            archiver << value;
         }
 
-        template <typename ValueType, IsIArchivable<ValueType> concept = 0>
-        void ArchiveValue(Archiver& archiver, const char* name, ValueType&& value)
+        template <typename ValueType, IsArchivableVariantType<ValueType> concept = true>
+        void ArchiveValue(Archiver& archiver, const std::vector<ValueType>& value)
         {
-            archiver.Archive(name, value);
+            archiver << value;
         }
 
-        template <typename ValueType, IsNotArchivable<ValueType> concept = 0>
-        void ArchiveValue(Archiver& archiver, const char* name, ValueType&& value)
+        template <typename ValueType, IsNotArchivableVariantType<ValueType> concept = true, IsNotVector<ValueType> concept2 = true>
+        void ArchiveValue(Archiver& archiver, ValueType&& value)
         {
-            throw InputException(InputExceptionErrors::typeMismatch, "VariantBase::ArchiveProperty called with unarchivable type");
+            UNUSED(archiver, value);
+            throw InputException(InputExceptionErrors::typeMismatch, std::string("VariantBase::ArchiveValue called with unarchivable type: ") + GetTypeName<ValueType>());
         }
 
-        template <typename ValueType, IsFundamental<ValueType> concept = 0>
-        void UnarchiveValue(Unarchiver& archiver, SerializationContext& context, const char* name, ValueType&& value)
+        template <typename ValueType, IsNotArchivableVariantType<ValueType> concept = true>
+        void ArchiveValue(Archiver& archiver, const std::vector<ValueType>& value)
         {
-            archiver.Unarchive(name, value);
+            UNUSED(archiver, value);
+            throw InputException(InputExceptionErrors::typeMismatch, std::string("VariantBase::ArchiveValue called with unarchivable vector type: ") + GetTypeName<ValueType>());
         }
 
-        template <typename ValueType, IsIArchivable<ValueType> concept = 0>
-        void UnarchiveValue(Unarchiver& archiver, SerializationContext& context, const char* name, ValueType&& value)
+        //
+        // Helper functions to allow SFINAE to select between implementations of Unarchiver::operator>>
+        //
+        template <typename ValueType, IsArchivableVariantType<ValueType> concept = true>
+        void UnarchiveValue(Unarchiver& archiver, ValueType&& value)
         {
-            archiver.Unarchive(name, value);
+            archiver >> value;
         }
 
-        template <typename ValueType, IsNotArchivable<ValueType> concept = 0>
-        void UnarchiveValue(Unarchiver& archiver, SerializationContext& context, const char* name, ValueType&& value)
+        template <typename ValueType, IsArchivableVariantType<ValueType> concept = true>
+        void UnarchiveValue(Unarchiver& archiver, std::vector<ValueType>& value)
         {
-            throw InputException(InputExceptionErrors::typeMismatch, "VariantBase::ArchiveProperty called with unarchivable type");
+            archiver >> value;
+        }
+
+        template <typename ValueType, IsNotArchivableVariantType<ValueType> concept = true, IsNotVector<ValueType> concept2 = true>
+        void UnarchiveValue(Unarchiver& archiver, ValueType&& value)
+        {
+            UNUSED(archiver, value);
+            throw InputException(InputExceptionErrors::typeMismatch, std::string("VariantBase::ArchiveValue called with unarchivable type: ") + GetTypeName<ValueType>());
+        }
+
+        template <typename ValueType, IsNotArchivableVariantType<ValueType> concept = true>
+        void UnarchiveValue(Unarchiver& archiver, std::vector<ValueType>& value)
+        {
+            UNUSED(archiver, value);
+            throw InputException(InputExceptionErrors::typeMismatch, std::string("VariantBase::UnarchiveValue called with unarchivable type: ") + GetTypeName<typename std::decay<ValueType>::type>());
         }
 
         //
@@ -332,9 +407,21 @@ namespace utilities
             : _type(type){};
 
         template <typename ValueType>
-        ValueType VariantBase::GetValue() const
+        ValueType& VariantBase::GetValue()
         {
             auto thisPtr = dynamic_cast<const VariantDetail::VariantDerived<std::decay_t<ValueType>>*>(this);
+            if (thisPtr == nullptr)
+            {
+                throw InputException(InputExceptionErrors::typeMismatch, std::string{ "VariantBase::GetValue called with wrong type. Called with: " + TypeName<ValueType>::GetName() + ", but stored value is: " + GetStoredTypeName() });
+            }
+
+            return thisPtr->GetValue();
+        }
+
+        template <typename ValueType>
+        const ValueType& VariantBase::GetValue() const
+        {
+            const auto thisPtr = dynamic_cast<const VariantDetail::VariantDerived<std::decay_t<ValueType>>*>(this);
             if (thisPtr == nullptr)
             {
                 throw InputException(InputExceptionErrors::typeMismatch, std::string{ "VariantBase::GetValue called with wrong type. Called with: " + TypeName<ValueType>::GetName() + ", but stored value is: " + GetStoredTypeName() });
@@ -441,16 +528,38 @@ namespace utilities
             return TryParseValue(s, _value);
         }
 
+        // template <typename ValueType>
+        // void VariantDerived<ValueType>::operator++()
+        // {
+        // }
+
+        // template <typename ValueType>
+        // void VariantDerived<ValueType>::operator++(int)
+        // {
+        // }
+
+        // template <typename ValueType>
+        // void VariantDerived<ValueType>::operator--()
+        // {
+        // }
+
+        // template <typename ValueType>
+        // void VariantDerived<ValueType>::operator--(int)
+        // {
+        // }
+
         template <typename ValueType>
-        void VariantDerived<ValueType>::ArchiveProperty(const char* name, Archiver& archiver) const
+        void VariantDerived<ValueType>::WriteToArchive(utilities::Archiver& archiver) const
         {
-            ArchiveValue(archiver, name, GetValue());
+            ArchiveValue(archiver, GetValue());
+            // archiver << _value;
         }
 
         template <typename ValueType>
-        void VariantDerived<ValueType>::UnarchiveProperty(const char* name, Unarchiver& archiver, SerializationContext& context)
+        void VariantDerived<ValueType>::ReadFromArchive(utilities::Unarchiver& archiver)
         {
-            UnarchiveValue(archiver, context, name, _value);
+            UnarchiveValue(archiver, _value);
+            // archiver >> _value;
         }
 
     } // end VariantDetail namespace
@@ -467,7 +576,7 @@ namespace utilities
         _value = std::unique_ptr<VariantDetail::VariantBase>(basePtr);
     }
 
-    template <typename ValueType>
+    template <typename ValueType, IsNotVariant<ValueType> concept>
     Variant::Variant(ValueType&& value)
         : _type(std::type_index(typeid(ValueType)))
     {
@@ -478,7 +587,7 @@ namespace utilities
     }
 
     template <typename ValueType>
-    ValueType Variant::GetValue() const
+    const ValueType& Variant::GetValue() const
     {
         if (!_value)
         {
@@ -490,7 +599,7 @@ namespace utilities
             throw InputException(InputExceptionErrors::typeMismatch, std::string{ "VariantBase::GetValue called with wrong type. Called with: " + TypeName<ValueType>::GetName() + ", but stored value is: " + GetStoredTypeName() });
         }
 
-        return _value->GetValue<ValueType>();
+        return GetBasePointer()->GetValue<ValueType>();
     }
 
     template <typename ValueType>
@@ -501,7 +610,7 @@ namespace utilities
             return false;
         }
 
-        value = _value->GetValue<ValueType>();
+        value = GetBasePointer()->GetValue<ValueType>();
         return true;
     }
 
@@ -685,9 +794,10 @@ namespace utilities
         return false;
     }
 
-    template <typename ValueType>
+    template <typename ValueType, IsNotVariant<ValueType> concept>
     Variant& Variant::operator=(ValueType&& value)
     {
+        static_assert(!std::is_same<std::decay_t<ValueType>, Variant>(), "Can't make a Variant of a Variant");
         _type = std::type_index(typeid(ValueType));
         auto derivedPtr = new VariantDetail::VariantDerived<std::decay_t<ValueType>>(std::forward<ValueType>(value));
         auto basePtr = static_cast<VariantDetail::VariantBase*>(derivedPtr);
@@ -699,6 +809,23 @@ namespace utilities
     bool Variant::IsType() const
     {
         return (_value != nullptr && std::type_index(typeid(ValueType)) == _type);
+    }
+
+    template <typename ValueType>
+    void Variant::RegisterArchivableVariantType(VariantTypeRegistry& registry)
+    {
+        registry.SetVariantTypeFunction<ValueType>([](Variant& variant) {
+            variant.ResetValue<ValueType>(ValueType());
+        });
+    }
+
+    template <typename ValueType>
+    void Variant::RegisterArchivableVariantVectorType(VariantTypeRegistry& registry)
+    {
+        using VectorType = std::vector<ValueType>;
+        registry.SetVariantTypeFunction<VectorType>([](Variant& variant) {
+            variant.ResetValue<VectorType>(VectorType());
+        });
     }
 
     template <typename ValueType, typename... Args>

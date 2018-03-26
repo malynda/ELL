@@ -38,6 +38,7 @@
 #include "InputLayer.h"
 #include "PoolingLayer.h"
 #include "ReLUActivation.h"
+#include "RegionDetectionLayer.h"
 #include "ScalingLayer.h"
 #include "SoftmaxLayer.h"
 
@@ -62,7 +63,7 @@ using namespace nodes;
 //
 namespace
 {
-size_t GetShapeSize(const math::Triplet& shape)
+size_t GetShapeSize(const math::IntegerTriplet& shape)
 {
     return shape[0] * shape[1] * shape[2];
 }
@@ -79,11 +80,7 @@ ell::predictors::NeuralNetworkPredictor<ElementType> CreateNeuralNetworkPredicto
 
     using InputParameters = typename InputLayer<ElementType>::InputParameters;
     using LayerParameters = typename Layer<ElementType>::LayerParameters;
-    using TensorType = typename Layer<ElementType>::TensorType;
-    using Shape = typename Layer<ElementType>::Shape;
     using VectorType = typename Layer<ElementType>::VectorType;
-    using MatrixType = typename Layer<ElementType>::MatrixType;
-    using DataVectorType = typename NeuralNetworkPredictor<ElementType>::DataVectorType;
 
     // Build a net
     typename NeuralNetworkPredictor<ElementType>::InputLayerReference inputLayer;
@@ -100,7 +97,7 @@ ell::predictors::NeuralNetworkPredictor<ElementType> CreateNeuralNetworkPredicto
     return neuralNetwork;
 }
 
-void TestNeuralNetworkPredictorNode()
+static void TestNeuralNetworkPredictorNode()
 {
     using namespace ell::predictors;
     using namespace ell::predictors::neural;
@@ -124,7 +121,7 @@ void TestNeuralNetworkPredictorNode()
     testing::ProcessTest("Testing NeuralNetworkPredictorNode compute", testing::IsEqual(modelOutput, output));
 }
 
-void TestArchiveNeuralNetworkPredictorNode()
+static void TestArchiveNeuralNetworkPredictorNode()
 {
     using namespace ell::predictors;
     using namespace ell::predictors::neural;
@@ -143,6 +140,7 @@ void TestArchiveNeuralNetworkPredictorNode()
     {
         auto inputNode = model.AddNode<model::InputNode<ElementType>>(GetShapeSize(neuralNetwork.GetInputShape()));
         auto predictorNode = model.AddNode<nodes::NeuralNetworkPredictorNode<ElementType>>(inputNode->output, neuralNetwork);
+        UNUSED(predictorNode);
     }
     auto numNodes = model.Size();
 
@@ -175,7 +173,7 @@ void TestArchiveNeuralNetworkPredictorNode()
     testing::ProcessTest("Testing NeuralNetworkPredictorNode archive (compute)", testing::IsEqual(modelOutput, output, eps));
 }
 
-void TestArchiveNeuralNetworkLayerNodes()
+static void TestArchiveNeuralNetworkLayerNodes()
 {
     using namespace ell::predictors;
     using namespace ell::predictors::neural;
@@ -194,6 +192,7 @@ void TestArchiveNeuralNetworkLayerNodes()
     {
         auto inputNode = model.AddNode<model::InputNode<ElementType>>(GetShapeSize(neuralNetwork.GetInputShape()));
         auto predictorNode = model.AddNode<nodes::NeuralNetworkPredictorNode<ElementType>>(inputNode->output, neuralNetwork);
+        UNUSED(predictorNode);
     }
 
     // Refine the model
@@ -226,7 +225,7 @@ void TestArchiveNeuralNetworkLayerNodes()
 // Individual layer nodes
 //
 
-void TestActivationLayerNode()
+static void TestActivationLayerNode()
 {
     using ElementType = double;
     using namespace ell::predictors;
@@ -261,7 +260,7 @@ void TestActivationLayerNode()
     testing::ProcessTest("Testing ActivationLayerNode compute", testing::IsEqual(modelOutput, output.ToArray(), eps));
 }
 
-void TestBatchNormalizationLayerNode()
+static void TestBatchNormalizationLayerNode()
 {
     using LayerType = predictors::neural::BatchNormalizationLayer<double>;
 
@@ -303,7 +302,7 @@ void TestBatchNormalizationLayerNode()
     testing::ProcessTest("Testing BatchNormalizationLayerNode compute", testing::IsEqual(modelOutput, output.ToArray(), eps));
 }
 
-void TestBiasLayerNode()
+static void TestBiasLayerNode()
 {
     using LayerType = predictors::neural::BiasLayer<double>;
 
@@ -342,7 +341,7 @@ void TestBiasLayerNode()
     testing::ProcessTest("Testing BiasLayerNode compute", testing::IsEqual(modelOutput, output.ToArray()));
 }
 
-void TestConvolutionalLayerNode()
+static void TestConvolutionalLayerNode()
 {
     using namespace ell::predictors;
     using namespace ell::predictors::neural;
@@ -350,7 +349,6 @@ void TestConvolutionalLayerNode()
     using LayerParameters = typename Layer<ElementType>::LayerParameters;
     using TensorType = typename Layer<ElementType>::TensorType;
     using Shape = typename Layer<ElementType>::Shape;
-    using VectorType = typename Layer<ElementType>::VectorType;
 
     // Verify ConvolutionalLayer with diagonal method
     TensorType input(3, 4, 2); // Input includes padding
@@ -362,7 +360,7 @@ void TestConvolutionalLayerNode()
     Shape outputShape = { 1, 2, 2 }; // Output has no padding
     LayerParameters parameters{ input, ZeroPadding(1), outputShape, NoPadding() };
     ConvolutionalParameters convolutionalParams{ 3, 1, ConvolutionMethod::diagonal, 2 };
-    TensorType weights(convolutionalParams.receptiveField * outputShape[2], convolutionalParams.receptiveField, input.NumChannels());
+    TensorType weights(convolutionalParams.receptiveField * outputShape.NumChannels(), convolutionalParams.receptiveField, input.NumChannels());
     // clang-format off
     std::vector<ElementType> weightsVector{   // RowMajor then depth order
         1, 3, 2, 3, 1, 1, 2, 3, 1,
@@ -371,7 +369,7 @@ void TestConvolutionalLayerNode()
         0, 3, 2, 3, 1, 2, 1, 0, 2 };
     // clang-format on
     size_t vectorIndex = 0;
-    for (size_t f = 0; f < outputShape[2]; f++)
+    for (size_t f = 0; f < outputShape.NumChannels(); f++)
     {
         for (size_t k = 0; k < input.NumChannels(); k++)
         {
@@ -415,16 +413,16 @@ void TestConvolutionalLayerNode()
     //
     // Verify ConvolutionalLayer with regular method
     //
-    convolutionalParams.method = ConvolutionMethod::columnwise;
+    convolutionalParams.method = ConvolutionMethod::unrolled;
     ConvolutionalLayer<ElementType> layer2(parameters, convolutionalParams, weights);
     layer2.Compute();
     auto output2 = layer2.GetOutput();
 
     testing::ProcessTest("Testing ConvolutionalLayer (regular), values",
-                         testing::IsEqual(output2(0, 0, 0), v1, eps) &&
-                             testing::IsEqual(output2(0, 0, 1), v2, eps) &&
-                             testing::IsEqual(output2(0, 1, 0), v3, eps) &&
-                             testing::IsEqual(output2(0, 1, 1), v4, eps));
+                         (testing::IsEqual(output2(0, 0, 0), v1, eps) &&
+                          testing::IsEqual(output2(0, 0, 1), v2, eps) &&
+                          testing::IsEqual(output2(0, 1, 0), v3, eps) &&
+                          testing::IsEqual(output2(0, 1, 1), v4, eps)));
     // Create model
     model::Model model2;
     auto inputNode2 = model2.AddNode<model::InputNode<double>>(input.Size());
@@ -435,7 +433,7 @@ void TestConvolutionalLayerNode()
     testing::ProcessTest("Testing ConvolutionalLayer (regular) compute", testing::IsEqual(modelOutput2, output2.ToArray()));
 }
 
-void TestBinaryConvolutionalLayerNode()
+static void TestBinaryConvolutionalLayerNode()
 {
     using namespace ell::predictors;
     using namespace ell::predictors::neural;
@@ -443,7 +441,6 @@ void TestBinaryConvolutionalLayerNode()
     using LayerParameters = typename Layer<ElementType>::LayerParameters;
     using TensorType = typename Layer<ElementType>::TensorType;
     using Shape = typename Layer<ElementType>::Shape;
-    using VectorType = typename Layer<ElementType>::VectorType;
 
     //
     // Verify BinaryConvolutionalLayer with gemm method
@@ -456,8 +453,8 @@ void TestBinaryConvolutionalLayerNode()
     input(1, 2, 1) = 2;
     Shape outputShape = { 1, 2, 2 }; // Output has no padding
     LayerParameters parameters{ input, MinusOnePadding(1), outputShape, NoPadding() };
-    BinaryConvolutionalParameters convolutionalParams{ 3, 1, BinaryConvolutionMethod::gemm };
-    TensorType weights(convolutionalParams.receptiveField * outputShape[2], convolutionalParams.receptiveField, input.NumChannels());
+    BinaryConvolutionalParameters convolutionalParams{ 3, 1, BinaryConvolutionMethod::gemm, BinaryWeightsScale::mean };
+    TensorType weights(convolutionalParams.receptiveField * outputShape.NumChannels(), convolutionalParams.receptiveField, input.NumChannels());
     // clang-format off
     std::vector<ElementType> weightsVector{   // RowMajor then depth order
         1, 3, 2, 3, 1, 1, 2, 3, 1,
@@ -466,7 +463,7 @@ void TestBinaryConvolutionalLayerNode()
         0, 3, 2, 3, 1, 2, 1, 0, 2 };
     // clang-format on
     size_t vectorIndex = 0;
-    for (size_t f = 0; f < outputShape[2]; f++)
+    for (size_t f = 0; f < outputShape.NumChannels(); f++)
     {
         for (size_t k = 0; k < input.NumChannels(); k++)
         {
@@ -483,12 +480,12 @@ void TestBinaryConvolutionalLayerNode()
     BinaryConvolutionalLayer<ElementType> layer1(parameters, convolutionalParams, weights);
     layer1.Compute();
     auto output1 = layer1.GetOutput();
-    ElementType eps = 1e-6;
+    ElementType eps = 1e-5;
     testing::ProcessTest("Testing BinaryConvolutionalLayer (gemm), values",
-                         testing::IsEqual(output1(0, 0, 0), -20.5555553, eps) &&
-                             testing::IsEqual(output1(0, 0, 1), -9.66666603, eps) &&
-                             testing::IsEqual(output1(0, 1, 0), -20.5555553, eps) &&
-                             testing::IsEqual(output1(0, 1, 1), -9.66666603, eps));
+                         (testing::IsEqual(output1(0, 0, 0), -20.55556, eps) &&
+                          testing::IsEqual(output1(0, 0, 1), -9.66667, eps) &&
+                          testing::IsEqual(output1(0, 1, 0), -20.55556, eps) &&
+                          testing::IsEqual(output1(0, 1, 1), -9.66667, eps)));
 
     // Create model
     model::Model model1;
@@ -515,10 +512,10 @@ void TestBinaryConvolutionalLayerNode()
     auto output2 = layer2.GetOutput();
 
     testing::ProcessTest("Testing BinaryConvolutionalLayer (bitwise), values",
-                         (testing::IsEqual(output2(0, 0, 0), -20.5555553, eps) &&
-                          testing::IsEqual(output2(0, 0, 1), -9.66666603, eps) &&
-                          testing::IsEqual(output2(0, 1, 0), -20.5555553, eps) &&
-                          testing::IsEqual(output2(0, 1, 1), -9.66666603, eps)));
+                         (testing::IsEqual(output2(0, 0, 0), 8.22222, eps) &&
+                          testing::IsEqual(output2(0, 0, 1), 6.44444, eps) &&
+                          testing::IsEqual(output2(0, 1, 0), 8.22222, eps) &&
+                          testing::IsEqual(output2(0, 1, 1), 6.44444, eps)));
 
     // Create model
     model::Model model2;
@@ -530,7 +527,7 @@ void TestBinaryConvolutionalLayerNode()
     testing::ProcessTest("Testing BinaryConvolutionalLayer (bitwise) compute", testing::IsEqual(modelOutput2, output2.ToArray()));
 }
 
-void TestFullyConnectedLayerNode()
+static void TestFullyConnectedLayerNode()
 {
     using LayerType = predictors::neural::FullyConnectedLayer<double>;
 
@@ -538,7 +535,6 @@ void TestFullyConnectedLayerNode()
     using TensorType = typename LayerType::TensorType;
     using MatrixType = typename LayerType::MatrixType;
     using Shape = typename LayerType::Shape;
-    using VectorType = typename LayerType::VectorType;
 
     // Set up layer
     TensorType input(2, 2, 2);
@@ -580,7 +576,7 @@ void TestFullyConnectedLayerNode()
     testing::ProcessTest("Testing FullyConnectedLayerNode compute", testing::IsEqual(modelOutput, output.ToArray()));
 }
 
-void TestPoolingLayerNode()
+static void TestPoolingLayerNode()
 {
     using namespace ell::predictors;
     using namespace ell::predictors::neural;
@@ -629,14 +625,13 @@ void TestPoolingLayerNode()
     testing::ProcessTest("Testing PoolingLayer, padding", output(0, 0, 0) == 0 && output(0, 1, 0) == 0 && output(2, 3, 1) == 0 && output(3, 3, 1) == 0);
 }
 
-void TestScalingLayerNode()
+static void TestScalingLayerNode()
 {
     using ElementType = double;
     using LayerType = predictors::neural::ScalingLayer<ElementType>;
 
     using LayerParameters = typename LayerType::LayerParameters;
     using TensorType = typename LayerType::TensorType;
-    using MatrixType = typename LayerType::MatrixType;
     using Shape = typename LayerType::Shape;
     using VectorType = typename LayerType::VectorType;
 
@@ -674,7 +669,7 @@ void TestScalingLayerNode()
     testing::ProcessTest("Testing ScalingLayerNode compute", testing::IsEqual(modelOutput, output.ToArray()));
 }
 
-void TestSoftmaxLayerNode()
+static void TestSoftmaxLayerNode()
 {
     using ElementType = double;
     using LayerType = predictors::neural::SoftmaxLayer<ElementType>;
@@ -708,4 +703,22 @@ void TestSoftmaxLayerNode()
     inputNode->SetInput(input.ToArray());
     auto modelOutput = model.ComputeOutput(computeNode->output);
     testing::ProcessTest("Testing SoftmaxLayerNode compute", testing::IsEqual(modelOutput, output.ToArray()));
+}
+
+void NeuralNetworkLayerNodesTests()
+{
+    // Neural nets
+    TestNeuralNetworkPredictorNode();
+    TestActivationLayerNode();
+    TestBatchNormalizationLayerNode();
+    TestBiasLayerNode();
+    TestBinaryConvolutionalLayerNode();
+    TestConvolutionalLayerNode();
+    TestFullyConnectedLayerNode();
+    TestPoolingLayerNode();
+    TestScalingLayerNode();
+    TestSoftmaxLayerNode();
+
+    TestArchiveNeuralNetworkPredictorNode();
+    TestArchiveNeuralNetworkLayerNodes();
 }

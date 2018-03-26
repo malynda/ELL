@@ -7,17 +7,20 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "IRHeaderWriter.h"
-
-// emitters
 #include "EmitterException.h"
 #include "IRMetadata.h"
+#include "IRModuleEmitter.h"
 
 // llvm
-#include "llvm/IR/Attributes.h"
-#include "llvm/IR/IRPrintingPasses.h"
-#include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Module.h"
-#include "llvm/Support/raw_os_ostream.h"
+#include <llvm/IR/Attributes.h>
+#include <llvm/IR/IRPrintingPasses.h>
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Module.h>
+#include <llvm/Support/raw_os_ostream.h>
+
+// utilities
+#include "Debug.h"
+#include "StringUtil.h"
 
 // stl
 #include <sstream>
@@ -35,7 +38,7 @@ namespace emitters
             if (t->hasName()) // && !t->isLiteral() ?
             {
                 std::string typeName = t->getName();
-                os << "struct " << typeName;
+                os << typeName;
             }
         }
 
@@ -95,23 +98,24 @@ namespace emitters
             }
         }
 
-        void WriteStructDefinition(std::ostream& os, llvm::StructType* t)
+        void WriteStructDefinition(std::ostream& os, llvm::StructType* t, const std::vector<std::string>& fieldNames)
         {
             if (t->hasName()) // && !t->isLiteral() ?
             {
                 std::string typeName = t->getName();
-                os << "struct " << typeName << "\n";
+                DeclareIfDefDefine guard(os, "ELL_" + typeName);
+                os << "typedef struct " << typeName << "\n";
                 os << "{\n";
-                auto index = 0;
+                size_t index = 0;
                 for (auto& fieldType : t->elements())
                 {
                     os << "    ";
-                    std::string fieldName = std::string("param") + std::to_string(index);
+                    std::string fieldName = (index >= fieldNames.size()) ? std::string("param") + std::to_string(index) : fieldNames[index];
                     WriteLLVMVariableDeclaration(os, fieldType, fieldName);
                     os << ";\n";
                     ++index;
                 }
-                os << "};";
+                os << "} " << typeName << ";\n\n";
             }
         }
     }
@@ -180,6 +184,7 @@ namespace emitters
             WriteLLVMType(os, returnType);
             os << " " << name << "(";
             bool first = true;
+
             for (const auto& arg : function.args())
             {
                 if (!first)
@@ -187,13 +192,13 @@ namespace emitters
                     os << ", ";
                 }
                 first = false;
+
                 WriteLLVMType(os, arg.getType());
 
-                bool hasParamName = false;
-                if (hasParamName)
+                std::string argName = arg.getName();
+                if (!argName.empty())
                 {
-                    auto paramName = "param";
-                    os << " " << paramName;
+                    os << " " << argName;
                 }
             }
 
@@ -216,37 +221,43 @@ namespace emitters
 
             // preprocessor definitions
             auto defines = moduleEmitter.GetPreprocessorDefinitions();
-            if (defines.size() > 0)
+            for (const auto& def : defines)
             {
-                for (const auto& def : defines)
-                {
-                    os << "#define " << def.first << " " << def.second << "\n";
-                }
-                os << "\n";
+                DeclareIfDefDefine define(os, def.first, def.second);
             }
 
             // First write out type definitions
             os << "//\n// Types\n//\n\n";
 
             // Look for the module-level "declare in header" tag
-            if (moduleEmitter.HasMetadata("", c_declareInHeaderTagName))
+            if (moduleEmitter.HasMetadata(c_declareTypeInHeaderTagName))
             {
-                auto typeNames = GetModuleTagValues(moduleEmitter, c_declareInHeaderTagName);
+                auto typeNames = GetSingletonModuleTagValues(moduleEmitter, c_declareTypeInHeaderTagName);
+
                 auto structTypes = pModule->getIdentifiedStructTypes();
                 for (const auto& t : structTypes)
                 {
                     if (t->hasName() && (typeNames.cend() != typeNames.find(t->getName())))
                     {
-                        WriteStructDefinition(os, t);
-                        os << "\n\n";
+                        // Get struct field names
+                        auto tagName = GetStructFieldsTagName(t);
+                        std::vector<std::string> fieldNames;
+                        if (moduleEmitter.HasMetadata(tagName))
+                        {
+                            auto fieldNameMetadata = moduleEmitter.GetMetadata(tagName);
+                            if (!fieldNameMetadata.empty())
+                            {
+                                fieldNames = fieldNameMetadata[0];
+                            }
+                        }
+                        WriteStructDefinition(os, t, fieldNames);
                     }
                 }
             }
 
-            os << "\n";
             os << "//\n// Functions\n//\n\n";
             // Now write out function signatures
-            auto tagValues = GetFunctionsWithTag(moduleEmitter, c_declareInHeaderTagName);
+            auto tagValues = GetFunctionsWithTag(moduleEmitter, c_declareFunctionInHeaderTagName);
             for (auto& tv : tagValues)
             {
                 WriteFunctionDeclaration(os, moduleEmitter, *(tv.function));
@@ -255,22 +266,153 @@ namespace emitters
         }
     }
 
+    void WriteModuleCppWrapper(std::ostream& os, IRModuleEmitter& moduleEmitter)
+    {
+        auto callbacks = GetFunctionsWithTag(moduleEmitter, c_callbackFunctionTagName);
+        if (!callbacks.empty())
+        {
+            // If callbacks are part of the module, write the predict wrapper
+
+            // (Note: newlines are part of the syntax for #include)
+            // clang-format off
+            std::string predictWrapperCode(
+                #include "CppPredictWrapper.in"
+            );
+            // clang-format on
+
+            ReplaceDelimiter(predictWrapperCode, "MODULE", moduleEmitter.GetLLVMModule()->getName());
+
+            auto predictFunctions = GetFunctionsWithTag(moduleEmitter, c_predictFunctionTagName);
+            ReplaceDelimiter(predictWrapperCode, "FUNCTION", predictFunctions[0].function->getName());
+
+            ModuleCallbackDefinitions moduleCallbacks(callbacks);
+            if (moduleCallbacks.sources.size() > 0) 
+            {
+                ReplaceDelimiter(predictWrapperCode, "SOURCE_TYPE", moduleCallbacks.sources[0].inputType);
+                ReplaceDelimiter(predictWrapperCode, "SOURCE_CALLBACK", moduleCallbacks.sources[0].functionName);
+            }
+            else
+            {
+                throw utilities::InputException(utilities::InputExceptionErrors::invalidArgument,
+                    "SourceNode callback is missing");
+            }
+
+            if (moduleCallbacks.sinks.size() > 0)
+            {
+                ReplaceDelimiter(predictWrapperCode, "SINK_TYPE", moduleCallbacks.sinks[0].inputType);
+                ReplaceDelimiter(predictWrapperCode, "SINK_CALLBACK", moduleCallbacks.sinks[0].functionName);
+            }
+            else
+            {
+                throw utilities::InputException(utilities::InputExceptionErrors::invalidArgument,
+                    "SinkNode callback is missing");
+            }
+            os << predictWrapperCode << "\n";
+        }
+    }
+
+    void ReplaceDelimiter(std::string& text, const std::string& delimiter, const std::string& replacement)
+    {
+        utilities::ReplaceAll(text, "@@" + delimiter + "@@", replacement);
+    }
+
     //
     // DeclareExternC
     //
     DeclareExternC::DeclareExternC(std::ostream& os)
         : _os(&os)
     {
-        os << "#ifdef __cplusplus\n";
-        os << "extern \"C\"\n{\n";
-        os << "#endif\n";
+        DeclareIfDefGuard guard(os, "__cplusplus", DeclareIfDefGuard::Type::Positive);
+        *_os << "extern \"C\"\n{\n";
     }
 
     DeclareExternC::~DeclareExternC()
     {
-        *_os << "#ifdef __cplusplus\n";
+        DeclareIfDefGuard guard(*_os, "__cplusplus", DeclareIfDefGuard::Type::Positive);
         *_os << "} // extern \"C\"\n";
-        *_os << "#endif\n\n";
+    }
+
+    DeclareIfDefGuard::DeclareIfDefGuard(std::ostream& os, std::string symbol, Type type)
+        : _os(os), _symbol(std::move(symbol)), _type(type)
+    {
+        _os << "#if " << (_type == Type::Negative ? "!" : "") << "defined(" << _symbol << ")\n";
+    }
+
+    DeclareIfDefGuard::~DeclareIfDefGuard()
+    {
+        _os << "#endif // " << (_type == Type::Negative ? "!" : "") << "defined(" << _symbol << ")\n\n";
+    }
+
+    DeclareIfDefDefine::DeclareIfDefDefine(std::ostream& os, std::string symbol, const std::string& value /* = "" */)
+        : DeclareIfDefGuard(os, std::move(symbol), Type::Negative)
+    {
+        _os << "#define " << _symbol << (value.empty() ? "" : " ") << value << "\n\n";
+    }
+
+    //
+    // ModuleCallbackDefinitions
+    //
+    ModuleCallbackDefinitions::ModuleCallbackDefinitions(const std::vector<FunctionTagValues>& callbacks)
+    {
+        for (const auto& c : callbacks)
+        {
+            if (!c.values.empty())
+            {
+                auto nodeType = c.values[0];
+                if (nodeType == "SourceNode")
+                {
+                    sources.push_back(CallbackSignature(*c.function));
+                }
+                else if (nodeType == "SinkNode")
+                {
+                    sinks.push_back(CallbackSignature(*c.function));
+                }
+                else if (nodeType == "ClockNode")
+                {
+                    lagNotifications.push_back(CallbackSignature(*c.function));
+                }
+            }
+        }
+
+        // Eventually we'd support multiple sources and sinks.
+        // For now, assert that we're only going to look at the first ones of each.
+        DEBUG_THROW(sources.size() != 1, EmitterException(EmitterError::badFunctionDefinition, "Only one source callback function will be generated"));
+        DEBUG_THROW(sinks.size() != 1, EmitterException(EmitterError::badFunctionDefinition, "Only one sink callback function will be generated"));
+        DEBUG_THROW(lagNotifications.size() != 1, EmitterException(EmitterError::badFunctionDefinition, "Only one lag callback function will be generated"));
+    }
+
+    ModuleCallbackDefinitions::CallbackSignature::CallbackSignature(llvm::Function& function) :
+        functionName(function.getName())
+    {
+        // Parameters
+        // Callbacks have one input parameter and a return (which can be void)
+        {
+            std::ostringstream os;
+            auto& argument = *(function.args().begin());
+            auto type = argument.getType();
+            if (type->isPointerTy())
+            {
+                inputIsScalar = false;
+                WriteLLVMType(os, argument.getType()->getPointerElementType());
+            }
+            else
+            {
+                inputIsScalar = true;
+                WriteLLVMType(os, argument.getType());
+            }
+            inputType = os.str();
+        }
+
+        // Return type
+        {
+            std::ostringstream os;
+            WriteLLVMType(os, function.getReturnType());
+            returnType = os.str();
+        }
+
+        // Wrapper class name
+        className = inputType + "CallbackBase";
+        className[0] = ::toupper(className[0]); // pascal case
     }
 }
 }

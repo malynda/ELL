@@ -70,8 +70,12 @@ int main(int argc, char* argv[])
         // parse command line
         commandLineParser.Parse();
 
+        // default random seed
+        const std::string defaultRandomSeed = "123";
+
         // manually define regularization parameters to sweep over
         std::vector<double> regularization{ 1.0e-0, 1.0e-1, 1.0e-2, 1.0e-3, 1.0e-4, 1.0e-5, 1.0e-6 };
+        std::vector<std::string> randomSeeds(regularization.size(), defaultRandomSeed);
 
         if (trainerArguments.verbose)
         {
@@ -86,17 +90,19 @@ int main(int argc, char* argv[])
         // load dataset
         if (trainerArguments.verbose) std::cout << "Loading data ..." << std::endl;
         auto stream = utilities::OpenIfstream(dataLoadArguments.inputDataFilename);
-        auto mappedDataset = common::GetMappedDataset(stream, map);
+        auto parsedDataset = common::GetDataset(stream);
+        auto mappedDataset = common::TransformDataset(parsedDataset, map);
         auto mappedDatasetDimension = map.GetOutput(0).Size();
 
         // get predictor type
-        using PredictorType = predictors::LinearPredictor;
+        using PredictorType = predictors::LinearPredictor<double>;
+        using LinearPredictorNodeType = nodes::LinearPredictorNode<double>;
 
         // set up evaluators to only evaluate on the last update of the multi-epoch trainer
         evaluators::EvaluatorParameters evaluatorParameters{ 1, false };
 
         // create trainers
-        auto generator = common::MakeParametersEnumerator<trainers::SGDTrainerParameters>(regularization);
+        auto generator = common::MakeParametersEnumerator<trainers::SGDTrainerParameters>(regularization, randomSeeds);
         std::vector<trainers::EvaluatingTrainer<PredictorType>> evaluatingTrainers;
         std::vector<std::shared_ptr<evaluators::IEvaluator<PredictorType>>> evaluators;
         for (size_t i = 0; i < regularization.size(); ++i)
@@ -113,7 +119,7 @@ int main(int argc, char* argv[])
         if (trainerArguments.verbose) std::cout << "Training ..." << std::endl;
         trainer->SetDataset(mappedDataset.GetAnyDataset());
         trainer->Update();
-        predictors::LinearPredictor predictor(trainer->GetPredictor());
+        PredictorType predictor(trainer->GetPredictor());
         predictor.Resize(mappedDatasetDimension);
 
         // print loss and errors
@@ -134,7 +140,7 @@ int main(int argc, char* argv[])
         if (modelSaveArguments.outputModelFilename != "")
         {
             // Create a model
-            auto model = common::AppendNodeToModel<nodes::LinearPredictorNode, PredictorType>(map, predictor);
+            auto model = common::AppendNodeToModel<LinearPredictorNodeType, PredictorType>(map, predictor);
             common::SaveModel(model, modelSaveArguments.outputModelFilename);
         }
     }

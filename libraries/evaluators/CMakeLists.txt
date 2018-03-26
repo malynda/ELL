@@ -23,10 +23,13 @@ source_group("tcc" FILES ${tcc})
 
 add_library(${library_name} ${src} ${include} ${tcc})
 target_include_directories(${library_name} PUBLIC include)
-if(CMAKE_COMPILER_IS_GNUCXX)
-  target_compile_options(${library_name} PRIVATE -fPIC)
-endif()
 target_link_libraries(${library_name} data)
+
+# MSVC emits warnings incorrectly when mixing inheritance, templates,
+# and member function definitions outside of class definitions
+if(MSVC)
+    target_compile_options(${library_name} PRIVATE /wd4505)
+endif()
 
 set_property(TARGET ${library_name} PROPERTY FOLDER "libraries")
 
@@ -44,11 +47,18 @@ source_group("include" FILES ${test_include})
 
 add_executable(${test_name} ${test_src} ${test_include})
 target_include_directories(${test_name} PRIVATE test/include)
-target_link_libraries(${test_name} common evaluators data testing)
+target_link_libraries(${test_name} data evaluators functions predictors testing)
 copy_shared_libraries(${test_name})
+
+# MSVC emits warnings incorrectly when mixing inheritance, templates,
+# and member function definitions outside of class definitions
+if(MSVC)
+    target_compile_options(${test_name} PRIVATE /wd4505)
+endif()
 
 set_property(TARGET ${test_name} PROPERTY FOLDER "tests")
 
 add_test(NAME ${test_name} 
          WORKING_DIRECTORY ${GLOBAL_BIN_DIR}
          COMMAND ${test_name})
+set_test_library_path(${test_name})

@@ -9,6 +9,9 @@
 #include "Model_test.h"
 #include "ModelTestUtilities.h"
 
+// common
+#include "LoadModel.h"
+
 // model
 #include "InputNode.h"
 #include "InputPort.h"
@@ -23,9 +26,6 @@
 #include "ExtremalValueNode.h"
 #include "MovingAverageNode.h"
 #include "ValueSelectorNode.h"
-
-// common
-#include "LoadModel.h"
 
 // testing
 #include "testing.h"
@@ -114,7 +114,7 @@ void TestNodeIterator()
 {
     auto model = GetCompoundModel();
     auto size1 = model.Size();
-    auto size2 = 0;
+    size_t size2 = 0;
     auto iter = model.GetNodeIterator();
     while (iter.IsValid())
     {
@@ -128,13 +128,66 @@ void TestNodeIterator()
               << std::endl;
 }
 
-void TestExampleModel()
+void TestModelSerialization()
 {
-    auto model = common::LoadModel("[1]");
-    PrintModel(model);
+    auto model1 = GetCompoundModel();
+    std::stringstream buffer;
+    utilities::JsonArchiver archiver(buffer);
+    archiver << model1;
+
+    // Now unarchive model
+    utilities::SerializationContext context;
+    common::RegisterNodeTypes(context);
+    utilities::JsonUnarchiver unarchiver(buffer, context);
+    model::Model model2;
+    unarchiver >> model2;
+
+    testing::ProcessTest("Testing model serialization", testing::IsEqual(model1.Size(), model2.Size()));
+}
+
+void TestModelMetadata()
+{
+    auto model = GetCompoundModel();
+    auto iter = model.GetNodeIterator();
+    while (iter.IsValid())
+    {
+        auto node = const_cast<model::Node*>(iter.Get());
+        auto typeName = node->GetRuntimeTypeName();
+        node->GetMetadata().SetEntry("visited", std::string("true"));
+        node->GetMetadata().SetEntry("typeName", std::string(typeName));
+        node->GetMetadata().SetEntry("foo", std::string("bar"));
+        node->GetMetadata().SetEntry("foo", std::string("baz"));
+        iter.Next();
+    }
 
     auto inputNodes = model.GetNodesByType<model::InputNode<double>>();
-    std::cout << "# input nodes: " << inputNodes.size() << std::endl;
+    for (auto inputNode : inputNodes)
+    {
+        auto node = const_cast<model::InputNode<double>*>(inputNode);
+        node->GetMetadata().SetEntry("isInput", std::string("true"));
+    }
+
+    // Print archive of model:
+    std::cout << "Model with metadata:" << std::endl;
+    utilities::JsonArchiver printArchiver(std::cout);
+    printArchiver << model;
+
+    std::stringstream buffer;
+    utilities::JsonArchiver archiver(buffer);
+    archiver << model;
+
+    // Now unarchive model
+    utilities::SerializationContext context;
+    common::RegisterNodeTypes(context);
+    utilities::JsonUnarchiver unarchiver(buffer, context);
+    model::Model model2;
+    unarchiver >> model2;
+    auto inputNodes2 = model2.GetNodesByType<model::InputNode<double>>();
+    for (auto inputNode : inputNodes2)
+    {
+        testing::ProcessTest("Testing metadata unarchiving", inputNode->GetMetadata().HasEntry("isInput"));
+        testing::ProcessTest("Testing metadata unarchiving", inputNode->GetMetadata().GetEntry<std::string>("isInput") == "true");
+    }
 }
 
 void TestInputRouting1()
@@ -242,16 +295,16 @@ public:
         : Node({ &_input }, { &_output }), _input(this, input, inputPortName), _output(this, outputPortName, input.Size()){};
 
     static std::string GetTypeName() { return utilities::GetCompositeTypeName<ValueType>("SplittingNode"); }
-    virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+    std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
-    virtual void Copy(model::ModelTransformer& transformer) const override
+    void Copy(model::ModelTransformer& transformer) const override
     {
         auto newPortElements = transformer.TransformPortElements(_input.GetPortElements());
         auto newNode = transformer.AddNode<SplittingNode<ValueType>>(newPortElements);
         transformer.MapNodeOutput(output, newNode->output);
     }
 
-    virtual bool Refine(model::ModelTransformer& transformer) const override
+    bool Refine(model::ModelTransformer& transformer) const override
     {
         auto newPortElements = transformer.TransformPortElements(_input.GetPortElements());
         model::PortElements<ValueType> in1;
@@ -281,20 +334,20 @@ public:
     static constexpr const char* inputPortName = "input";
     static constexpr const char* outputPortName = "output";
 
-    virtual void WriteToArchive(utilities::Archiver& archiver) const override
+    void WriteToArchive(utilities::Archiver& archiver) const override
     {
         archiver["input"] << _input;
         archiver["output"] << _output;
     }
 
-    virtual void ReadFromArchive(utilities::Unarchiver& archiver) override
+    void ReadFromArchive(utilities::Unarchiver& archiver) override
     {
         archiver["input"] >> _input;
         archiver["output"] >> _output;
     }
 
 protected:
-    virtual void Compute() const override { _output.SetOutput(_input.GetValue()); }
+    void Compute() const override { _output.SetOutput(_input.GetValue()); }
 
 private:
     model::InputPort<ValueType> _input;

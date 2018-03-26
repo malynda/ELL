@@ -21,6 +21,8 @@ namespace ell
 {
 namespace utilities
 {
+    // NOTE: In the comments below, < and > are HTML escaped since the documentation is technically XML
+
     /// <summary>
     /// Assume that Base is a polymorpic base type, with multiple derived classes. Both the base type
     /// and the derived types must have a public static member named GetTypeName(), which returns the
@@ -101,7 +103,7 @@ namespace utilities
     public:
         /// <summary> Invokes the default constructor of the named type. </summary>
         ///
-        /// <typeparam name="BaseeType"> The base type to return. </typeparam>
+        /// <typeparam name="BaseType"> The base type to return. </typeparam>
         /// <param name="typeName"> Name of the type to construct. </param>
         ///
         /// <returns> A std::unique_ptr to the base type, which points to the newly constructed object </returns>

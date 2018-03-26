@@ -2,13 +2,12 @@
 # cmake file
 #
 
-find_package(PythonInterp)
-find_package(PythonLibs)
-if(${PYTHONLIBS_FOUND})
+if(${PYTHON_ENABLED})
 
     set(module_name "darknet_importer")
 
-    set(importer_src darknet_to_ell.py)
+    set(importer_src darknet_to_ell.py
+        darknet_import.py)
 
     add_custom_target(${module_name} DEPENDS SOURCES ${importer_src})
 
@@ -19,4 +18,4 @@ if(${PYTHONLIBS_FOUND})
     endforeach()
 
     add_subdirectory(test)
-endif()  # PYTHONLIBS_FOUND
+endif()  # PYTHON_ENABLED

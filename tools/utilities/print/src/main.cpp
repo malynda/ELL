@@ -12,12 +12,14 @@
 
 // common
 #include "LoadModel.h"
-#include "ModelLoadArguments.h"
+#include "MapLoadArguments.h"
 
 // utilities
 #include "CommandLineParser.h"
 #include "Exception.h"
+#include "NeuralNetworkPredictorNode.h"
 #include "OutputStreamImpostor.h"
+#include "StringUtil.h"
 
 // model
 #include "Model.h"
@@ -26,6 +28,17 @@
 #include <iostream>
 
 using namespace ell;
+using namespace ell::utilities;
+
+bool IsNeuralNetworkPredictorNode(const ell::model::Node* node)
+{
+    if (dynamic_cast<const ell::nodes::NeuralNetworkPredictorNode<float>*>(node) != nullptr)
+    {
+        return true;
+    }
+
+    return dynamic_cast<const ell::nodes::NeuralNetworkPredictorNode<double>*>(node) != nullptr;
+}
 
 int main(int argc, char* argv[])
 {
@@ -35,33 +48,44 @@ int main(int argc, char* argv[])
         utilities::CommandLineParser commandLineParser(argc, argv);
 
         // add arguments to the command line parser
-        common::ParsedModelLoadArguments modelLoadArguments;
+        common::ParsedMapLoadArguments mapLoadArguments;
         ParsedPrintArguments printArguments;
-        commandLineParser.AddOptionSet(modelLoadArguments);
+        commandLineParser.AddOptionSet(mapLoadArguments);
         commandLineParser.AddOptionSet(printArguments);
         commandLineParser.Parse();
 
-        // open model file
-        model::Model model;
-        try
+        if (argc == 1)
         {
-            model = common::LoadModel(modelLoadArguments.inputModelFile);
+            std::cout << commandLineParser.GetHelpString() << std::endl;
+            return 1;
         }
-        catch (const utilities::Exception&)
+
+        // if no input specified, print help and exit
+        if (!mapLoadArguments.HasInputFilename())
         {
-            auto map = common::LoadMap(modelLoadArguments.inputModelFile);
-            model = map.GetModel();
+            std::cout << commandLineParser.GetHelpString() << std::endl;
+            return 1;
+        }
+
+        // Load model from file
+        model::Map map = LoadMap(mapLoadArguments);
+
+        if (printArguments.refine > 0)
+        {
+            model::TransformContext context;
+            map.Refine(context, printArguments.refine);
         }
 
         // print model
         utilities::OutputStreamImpostor out = printArguments.outputStream;
-        if (printArguments.outputFormat == "dgml")
+        auto lowerOutputFormat = ToLowercase(printArguments.outputFormat);
+        if (lowerOutputFormat == "dgml" || lowerOutputFormat == "dot")
         {
-            PrintGraph(model, out);
+            PrintGraph(map.GetModel(), lowerOutputFormat, out, printArguments.includeNodeId);
         }
         else
         {
-            PrintModel(model, out);
+            PrintModel(map.GetModel(), out, printArguments.includeNodeId);
         }
     }
     catch (const utilities::CommandLineParserPrintHelpException& exception)

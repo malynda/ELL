@@ -22,6 +22,8 @@
 
 // math
 #include "Vector.h"
+#include "VectorOperations.h"
+
 
 // common
 #include "DataLoadArguments.h"
@@ -31,7 +33,7 @@
 #include "MapLoadArguments.h"
 
 // model
-#include "DynamicMap.h"
+#include "Map.h"
 #include "OutputNode.h"
 
 // stl
@@ -67,7 +69,7 @@ int main(int argc, char* argv[])
 
         // get data iterator
         auto stream = utilities::OpenIfstream(dataLoadArguments.inputDataFilename);
-        auto exampleIterator = common::GetExampleIterator(stream);
+        auto exampleIterator = common::GetAutoSupervisedExampleIterator(stream);
 
         // get output stream
         auto& outputStream = dataSaveArguments.outputDataStream;
@@ -75,7 +77,7 @@ int main(int argc, char* argv[])
         // output summarization mode
         if (applyArguments.summarize)
         {
-            model::DynamicMap map2;
+            model::Map map2;
             if (applyArguments.inputMapFilename2 != "")
             {
                 map2 = common::LoadMap(applyArguments.inputMapFilename2);

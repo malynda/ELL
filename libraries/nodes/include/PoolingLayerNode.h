@@ -9,12 +9,12 @@
 #pragma once
 
 #include "NeuralNetworkLayerNode.h"
-#include "PortMemoryLayout.h"
 
 // model
 #include "IRMapCompiler.h"
 #include "ModelTransformer.h"
 #include "PortElements.h"
+#include "PortMemoryLayout.h"
 
 // predictors
 #include "PoolingLayer.h"
@@ -37,14 +37,12 @@ namespace nodes
 
         /// @name Input and Output Ports
         /// @{
-        using BaseType::inputPortName; // "input"
-        using BaseType::outputPortName; // "output"
         using BaseType::input;
         using BaseType::output;
         /// @}
 
         PoolingLayerNode() = default;
-        
+
         /// <summary> Constructor from a layer. </summary>
         ///
         /// <param name="input"> The input to the layer. </param>
@@ -59,13 +57,28 @@ namespace nodes
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+        std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
         /// <summary> Indicates if this node is able to compile itself to code. </summary>
-        virtual bool IsCompilable() const override { return true; }
+        bool IsCompilable(const model::MapCompiler* compiler) const override { return true; }
 
     protected:
-        virtual void Compile(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function) override;
+        template <typename PoolingFunctionT>
+        llvm::Value* GetPoolingWindowValue(emitters::IRFunctionEmitter& function,
+                                           int windowRowStart,
+                                           int windowRowEnd,
+                                           int windowColumnStart,
+                                           int windowColumnEnd,
+                                           llvm::Value* inputRow,
+                                           llvm::Value* inputColumn,
+                                           llvm::Value* inputChannel,
+                                           llvm::Value* inputBuffer,
+                                           const model::Shape& inputIncrement,
+                                           PoolingFunctionT& poolingFunction);
+
+        void Compile(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function) override;
+        using BaseType::HasState;
+        using BaseType::GetLayer;
     };
 }
 }

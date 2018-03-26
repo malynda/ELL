@@ -43,15 +43,6 @@ namespace common
         /// <summary> The default size for the input of a newly-generated map (e.g., if no model/map file is specified) </summary>
         size_t defaultInputSize;
 
-        /// <summary> The type of map to load. </summary>
-        enum class MapType
-        {
-            simpleMap,
-            steadyClockSteppableMap,
-            systemClockSteppableMap
-        };
-        MapType mapType;
-
         /// <summary> Query if the arguments specify a map file. </summary>
         ///
         /// <returns> true if the arguments specify a map file. </returns>
@@ -91,14 +82,14 @@ namespace common
         /// <summary> Adds the arguments to the command line parser. </summary>
         ///
         /// <param name="parser"> [in,out] The parser. </param>
-        virtual void AddArgs(utilities::CommandLineParser& parser) override;
+        void AddArgs(utilities::CommandLineParser& parser) override;
 
         /// <summary> Check arguments. </summary>
         ///
         /// <param name="parser"> The parser. </param>
         ///
         /// <returns> An utilities::CommandLineParseResult. </returns>
-        virtual utilities::CommandLineParseResult PostProcess(const utilities::CommandLineParser& parser) override;
+        utilities::CommandLineParseResult PostProcess(const utilities::CommandLineParser& parser) override;
     };
 }
 }

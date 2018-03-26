@@ -72,7 +72,7 @@ namespace nodes
     {
         VerifyIsScalar(val);
         VerifyIsScalar(argVal);
-        if (IsPureVector(input) && !compiler.GetCompilerParameters().unrollLoops)
+        if (IsPureVector(input) && !compiler.GetCompilerOptions().unrollLoops)
         {
             CompileLoop(compiler, function);
         }
@@ -96,7 +96,7 @@ namespace nodes
 
         auto val0 = function.ValueAt(inputVal, function.Literal(0));
         function.Store(bestVal, val0);
-        function.Store(bestIndex, function.Literal(0));
+        function.StoreZero(bestIndex);
 
         auto forLoop = function.ForLoop();
         forLoop.Begin(1, numInputs, 1);
@@ -129,15 +129,15 @@ namespace nodes
 
         llvm::Value* val0 = compiler.LoadPortElementVariable(input.GetInputElement(0));
         function.Store(bestVal, val0);
-        function.Store(bestIndex, function.Literal(0));
+        function.StoreZero(bestIndex);
 
-        for (int i = 1; i < numInputs; ++i)
+        for (size_t i = 1; i < numInputs; ++i)
         {
             llvm::Value* val = compiler.LoadPortElementVariable(input.GetInputElement(i));
             emitters::IRIfEmitter if1 = function.If(GetComparison(), val, function.Load(bestVal));
             {
                 function.Store(bestVal, val);
-                function.Store(bestIndex, function.Literal(i));
+                function.Store(bestIndex, function.Literal(static_cast<int>(i)));
             }
             if1.End();
         }

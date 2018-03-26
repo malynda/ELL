@@ -9,6 +9,7 @@
 #include "IRFunctionTest.h"
 
 // emitters
+#include "CompilerOptions.h"
 #include "CompilableIRFunction.h"
 #include "EmitterException.h"
 #include "EmitterTypes.h"
@@ -42,7 +43,7 @@ public:
         return x + 5.0;
     }
 
-    llvm::Value* Compile(IRFunctionEmitter& function, llvm::Value* x) const override // or should this be llvm::Value* x???
+    llvm::Value* Compile(IRFunctionEmitter& function, llvm::Value* x) const override
     {
         llvm::Value* sum = function.Operator(emitters::GetAddForValueType<double>(), x, function.Literal<double>(5.0));
         return sum;
@@ -59,7 +60,8 @@ using BinaryScalarDoubleFunction = double (*)(double, double);
 //
 void TestIRAddFunction()
 {
-    IRModuleEmitter module("CompilableIRAddFunction");
+    CompilerOptions options;
+    IRModuleEmitter module("CompilableIRAddFunction", options);
     module.DeclarePrintf();
 
     IRAddFunction<double> func;
@@ -71,8 +73,8 @@ void TestIRAddFunction()
     args.push_back({ "y", VariableType::Double });
     auto function = module.BeginFunction(functionName, VariableType::Double, args);
 
-    llvm::Value* xArg = function.GetEmittedVariable(VariableScope::input, "x");
-    llvm::Value* yArg = function.GetEmittedVariable(VariableScope::input, "y");
+    llvm::Value* xArg = function.GetFunctionArgument("x");
+    llvm::Value* yArg = function.GetFunctionArgument("y");
     auto result = func.Compile(function, xArg, yArg);
     function.Return(result);
     module.EndFunction();
@@ -85,7 +87,7 @@ void TestIRAddFunction()
     std::vector<double> yData({ 10.0, 11.0, 12.0, 13.0, 14.0 });
     std::vector<double> computedResult;
     std::vector<double> compiledResult;
-    for (int index = 0; index < xData.size(); ++index)
+    for (size_t index = 0; index < xData.size(); ++index)
     {
         auto x = xData[index];
         auto y = yData[index];
@@ -97,7 +99,8 @@ void TestIRAddFunction()
 
 void TestIRFunction()
 {
-    IRModuleEmitter module("CompilableIRFunction");
+    CompilerOptions options;
+    IRModuleEmitter module("CompilableIRFunction", options);
     module.DeclarePrintf();
 
     CompilablePlusFiveFunction func;
@@ -108,7 +111,7 @@ void TestIRFunction()
     args.push_back({ "x", VariableType::Double });
     auto function = module.BeginFunction(functionName, VariableType::Double, args);
 
-    llvm::Value* arg = function.GetEmittedVariable(VariableScope::input, "x");
+    llvm::Value* arg = function.GetFunctionArgument("x");
     auto result = func.Compile(function, arg);
     function.Return(result);
     module.EndFunction();

@@ -16,6 +16,7 @@ namespace utilities
     template <typename ValueType>
     void ObjectArchive::SetType(const ValueType& object)
     {
+        UNUSED(object);
         _typeName = TypeName<typename std::decay<ValueType>::type>::GetName();
     }
 
@@ -42,6 +43,15 @@ namespace utilities
     void ObjectArchive::operator<<(ValueType&& value)
     {
         SetValue(value);
+    }
+
+    //
+    // Functions
+    //
+    template <typename ValueType>
+    ValueType CreateObject(const ObjectArchive& archive)
+    {
+        return archive.GetValue<ValueType>();
     }
 }
 }

@@ -79,21 +79,23 @@ namespace data
         class DatasetExampleIterator : public IExampleIterator<IteratorExampleType>
         {
         public:
+            using InternalIteratorType = typename std::vector<DatasetExampleType>::const_iterator;
+
+            /// <summary></summary>
+            DatasetExampleIterator(InternalIteratorType begin, InternalIteratorType end);
+
             /// <summary> Returns true if the iterator is currently pointing to a valid iterate. </summary>
             ///
-            /// <returns> true if it succeeds, false if it fails. </returns>
-            virtual bool IsValid() const override { return _current < _end; }
+            /// <returns> true if the iterator is currently pointing to a valid iterate. </returns>
+            bool IsValid() const override { return _current < _end; }
 
             /// <summary> Proceeds to the Next iterate. </summary>
-            virtual void Next() override { ++_current; }
+            void Next() override { ++_current; }
 
             /// <summary> Gets the current example pointer to by the iterator. </summary>
             ///
             /// <returns> The example. </returns>
-            virtual IteratorExampleType Get() const override { return _current->template CopyAs<IteratorExampleType>(); }
-
-            using InternalIteratorType = typename std::vector<DatasetExampleType>::const_iterator;
-            DatasetExampleIterator(InternalIteratorType begin, InternalIteratorType end);
+            IteratorExampleType Get() const override { return _current->template CopyAs<IteratorExampleType>(); }
 
         private:
             InternalIteratorType _current;
@@ -188,8 +190,17 @@ namespace data
         /// <param name="size"> The number of examples to include, a value of zero means all
         /// the way to the end. </param>
         ///
-        /// <returns> The iterator. </returns>
+        /// <returns> The dataset. </returns>
         AnyDataset GetAnyDataset(size_t fromIndex = 0, size_t size = 0) const { return AnyDataset(this, fromIndex, size); }
+
+        /// <summary> Returns an DataSet whose examples have been converted from this dataset. </summary>
+        ///
+        /// <typeparam name="otherExampleType"> Example type returned by the transformation function. </typeparam>
+        /// <param name="transformationFunction"> The function that is called on each example, returning the transformed example. </param>
+        ///
+        /// <returns> The dataset. </returns>
+        template <typename otherExampleType>
+        Dataset<otherExampleType> Transform(std::function<otherExampleType(const DatasetExampleType&)> transformationFunction);
 
         /// <summary> Adds an example at the bottom of the matrix. </summary>
         ///
@@ -256,8 +267,9 @@ namespace data
         size_t _numFeatures = 0;
     };
 
-    // friendly name
+    // friendly names
     typedef Dataset<AutoSupervisedExample> AutoSupervisedDataset;
+    typedef Dataset<AutoSupervisedMultiClassExample> AutoSupervisedMultiClassDataset;
     typedef Dataset<DenseSupervisedExample> DenseSupervisedDataset;
 
     /// <summary> Prints a data set to an ostream. </summary>

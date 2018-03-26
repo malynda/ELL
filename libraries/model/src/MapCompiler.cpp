@@ -10,27 +10,36 @@
 #include "CompilableNode.h"
 #include "CompilableNodeUtilities.h" // for PortTypeToVariableType
 #include "EmitterException.h"
+#include "Map.h"
+#include "Model.h"
+#include "Node.h"
+
+// utilities
+#include "Logger.h"
 
 namespace ell
 {
 namespace model
 {
-    MapCompiler::MapCompiler(const MapCompilerParameters& settings)
+    using namespace logging;
+
+    MapCompiler::MapCompiler(const MapCompilerOptions& settings)
         : _parameters(settings)
     {
         PushScope();
     }
 
-    void MapCompiler::CompileMap(DynamicMap& map, const std::string& functionName)
+    void MapCompiler::CompileMap(Map& map, const std::string& functionName)
     {
         auto pModuleEmitter = GetModuleEmitter();
 
         emitters::NamedVariableTypeList mainFunctionArguments = AllocateNodeFunctionArguments(map, *pModuleEmitter);
         pModuleEmitter->BeginMapPredictFunction(functionName, mainFunctionArguments);
 
+        Log() << "Creating 'predict' function" << EOL;
         auto inputSize = map.GetInput(0)->Size();
         auto outputSize = map.GetOutput(0).Size();
-        std::vector<std::string> comments = {std::string("Input size: ") + std::to_string(inputSize), std::string("Output size: ") + std::to_string(outputSize)};
+        std::vector<std::string> comments = { std::string("Input size: ") + std::to_string(inputSize), std::string("Output size: ") + std::to_string(outputSize) };
         pModuleEmitter->SetFunctionComments(functionName, comments);
 
         OnBeginCompileModel(map.GetModel());
@@ -38,12 +47,13 @@ namespace model
         OnEndCompileModel(map.GetModel());
 
         pModuleEmitter->EndMapPredictFunction();
+        Log() << "Finished 'predict' function" << EOL;
     }
 
     void MapCompiler::CompileNodes(Model& model)
     {
         model.Visit([this](const Node& node) {
-            if (!node.IsCompilable())
+            if (!node.IsCompilable(this))
             {
                 std::string typeName = node.GetRuntimeTypeName();
                 throw emitters::EmitterException(emitters::EmitterError::notSupported, std::string("Uncompilable node type: " + typeName));
@@ -52,6 +62,7 @@ namespace model
             auto compilableNode = const_cast<CompilableNode*>(dynamic_cast<const CompilableNode*>(&node));
             assert(compilableNode != nullptr && "Got null compilable node");
 
+            Log() << "Now compiling node " << DiagnosticString(node) << EOL;
             OnBeginCompileNode(node);
             compilableNode->CompileNode(*this);
             OnEndCompileNode(node);
@@ -94,7 +105,7 @@ namespace model
     //
     // Allocating variables for function arguments
     //
-    emitters::NamedVariableTypeList MapCompiler::AllocateNodeFunctionArguments(DynamicMap& map, emitters::ModuleEmitter& module)
+    emitters::NamedVariableTypeList MapCompiler::AllocateNodeFunctionArguments(Map& map, emitters::ModuleEmitter& module)
     {
         emitters::NamedVariableTypeList functionArguments;
 
@@ -110,7 +121,7 @@ namespace model
             }
             else
             {
-                // TODO: can we use an array type here? 
+                // TODO: can we use an array type here?
                 functionArguments.push_back({ argVar->EmittedName(), GetPointerType(argVar->Type()) });
             }
         }
@@ -157,19 +168,19 @@ namespace model
 
     void MapCompiler::PushScope()
     {
+        Log() << "Compiler creating new scope" << EOL;
         _portToVarMaps.emplace_back();
     }
 
     void MapCompiler::PopScope()
     {
+        Log() << "Compiler popping scope" << EOL;
         assert(_portToVarMaps.size() > 0);
         _portToVarMaps.pop_back();
     }
 
     emitters::Variable* MapCompiler::GetVariableForElement(const PortElementBase& element)
     {
-        auto var = GetVariableForPort(*element.ReferencedPort());
-
         return GetVariableForPort(*element.ReferencedPort());
     }
 

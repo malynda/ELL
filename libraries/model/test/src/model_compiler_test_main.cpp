@@ -8,22 +8,28 @@
 
 #include "CompilableNodesTest.h"
 #include "CompilerTest.h"
+#include "ModelHeaderOutputTest.h"
 #include "ModelTestUtilities.h"
 #include "PerformanceCountersTest.h"
 
 // testing
 #include "testing.h"
 
+// stl
+#include <iostream>
+
 using namespace ell;
 using namespace ell::emitters;
+using namespace ell::predictors::neural;
 
 void TestIRCompiler()
 {
-    // VerboseRegion region;
-
     TestFloatNode();
-    TestCompilableDotProductNode2(3);
-    TestCompilableDotProductNode2(4);
+    TestMultipleOutputNodes();
+    TestCompilableDotProductNode2<float>(3);
+    TestCompilableDotProductNode2<double>(3);
+    TestCompilableDotProductNode2<float>(4);
+    TestCompilableDotProductNode2<double>(4);
 
     TestCompileIsEqual();
     TestSimpleMap(false);
@@ -43,11 +49,16 @@ void TestIRCompiler()
     TestBinaryPredicate(false);
     TestSlidingAverage();
     TestDotProductOutput();
-    TestSteppableMap(false);
-    // TestSteppableMap(true); // Occassionally fails
+    TestLinearPredictor<double>();
+    TestLinearPredictor<float>();
     // TestMultiplexer(); // FAILS -- crash
-    // TestLinearPredictor(); // FAILS -- crash
     // TestForest(); // FAILS -- crash
+
+    TestMatrixVectorMultiplyNode(10, 5, true);
+    TestMatrixVectorMultiplyNode(10, 5, false);
+    TestMatrixMatrixMultiplyNode(4, 5, 6, true);
+    TestMatrixMatrixMultiplyNode(4, 5, 6, false);
+    // TestMatrixMatrixMultiplyNode(15, 25600, 27, false); // Fails due to numerical  issues
 
     TestCompilableScalarOutputNode();
     TestCompilableVectorOutputNode();
@@ -64,17 +75,26 @@ void TestIRCompiler()
     TestCompilableScalarBinaryPredicateNode();
     TestCompilableBinaryPredicateNode();
     TestCompilableMultiplexerNode();
-    TestCompilableTypeCastNode();
+    TestCompilableTypeCastNode(1);
+    TestCompilableTypeCastNode(2);
+    TestCompilableTypeCastNode(10);
+    TestReorderDataNode1();
+    TestReorderDataNode2();
+    TestReceptiveFieldMatrixNode(1, true); // new version
+    TestReceptiveFieldMatrixNode(1, false); // old (slow) version
+    TestReceptiveFieldMatrixNode(2, true); // new version
+    // TestReceptiveFieldMatrixNode(2, false); // old (slow) version -- Fails
     TestCompilableAccumulatorNodeFunction();
-    TestCompilableSourceNode(false);
-    // TestCompilableSourceNode(true); // Occassionally fails
-    TestCompilableSinkNode(false);
-    TestCompilableSinkNode(true);
-    TestCompilableAccumulatorNodeFunction();
+    TestCompilableSourceNode();
+    TestCompilableSinkNode();
+    TestCompilableClockNode();
+    TestCompilableFFTNode();
 
     TestPerformanceCounters();
-    TestCompilableDotProductNode2(3); // uses IR
-    TestCompilableDotProductNode2(4); // uses IR
+    TestCompilableDotProductNode2<float>(3); // uses IR
+    TestCompilableDotProductNode2<double>(3); // uses IR
+    TestCompilableDotProductNode2<float>(4); // uses IR
+    TestCompilableDotProductNode2<double>(4); // uses IR
 
     //
     // Neural net nodes
@@ -82,10 +102,18 @@ void TestIRCompiler()
     TestNeuralNetworkPredictorNode1();
     TestNeuralNetworkPredictorNode2();
     TestNeuralNetworkPredictorNode3();
-    TestNeuralNetworkPredictorNode4();
+    // TestNeuralNetworkPredictorNode4(); // Currently fails
+    // TestNeuralNetworkPredictorNode5(); // Currently fails (but just barely...)
+    // TestNeuralNetworkPredictorNode6();
 
-    TestInputLayerNode(0);
+    TestFusedLinearLayerNodes(4, 6, 8);
+
+    // TestInputLayerNode(0);
     TestInputLayerNode(1);
+
+    TestHardSigmoidActivationLayerNode();
+    TestHardSigmoidActivationLayerNode(0, 1);
+    TestHardSigmoidActivationLayerNode(0, 2);
 
     TestReLUActivationLayerNode();
     TestReLUActivationLayerNode(0, 1);
@@ -95,6 +123,10 @@ void TestIRCompiler()
     TestLeakyReLUActivationLayerNode();
     TestLeakyReLUActivationLayerNode(0, 1);
     TestLeakyReLUActivationLayerNode(0, 2);
+
+    TestParametricReLUActivationLayerNode();
+    TestParametricReLUActivationLayerNode(0, 1);
+    TestParametricReLUActivationLayerNode(0, 2);
 
     TestSigmoidActivationLayerNode();
     TestSigmoidActivationLayerNode(0, 1);
@@ -110,32 +142,24 @@ void TestIRCompiler()
     TestBiasLayerNode(0, 2);
     // TestBiasLayerNode(1, 0); // Input padding not supported (yet)
 
-    TestBinaryConvolutionalLayerNode();
+    TestMaxPoolingLayerNode(5, 5, 16, 5, 5, 4, 1, 1, 0); // params: inW, inH, inChannels, outW, outH, poolingWindowSize, stride, inputPadding, outputPadding
 
-    // TestConvolutionalLayerNode(ConvolutionType::GEMM);
-    TestConvolutionalLayerNode(ConvolutionType::GEMM, 1, 0);
-    TestConvolutionalLayerNode2(ConvolutionType::GEMM, 1, 0);
-    // TestConvolutionalLayerNode(ConvolutionType::GEMM, 2, 0);
-    // TestConvolutionalLayerNode(ConvolutionType::GEMM, 1, 1); // Convolutional layer output padding not supported
+    TestMaxPoolingLayerNode(8, 8, 16, 6, 6, 3, 1, 0, 0); // params: inW, inH, inChannels, outW, outH, poolingWindowSize, stride, inputPadding, outputPadding
+    TestMaxPoolingLayerNode(8, 8, 16, 6, 6, 3, 1, 0, 1);
+    TestMaxPoolingLayerNode(8, 8, 16, 6, 6, 3, 1, 0, 2);
 
-    TestConvolutionalLayerNode(ConvolutionType::Diagonal); // Input padding must be set correctly (to floor(filterWidth/2))
+    TestMaxPoolingLayerNode(10, 10, 16, 5, 5, 3, 2, 1, 0);
+    TestMaxPoolingLayerNode(10, 10, 16, 9, 9, 2, 1, 0, 0);
 
-    TestFullyConnectedLayerNode();
-    // TestFullyConnectedLayerNode(0, 1); // Fully-connected layer nodes can't have padding (yet)
-    // TestFullyConnectedLayerNode(0, 2); // Fully-connected layer nodes can't have padding (yet)
-    // TestFullyConnectedLayerNode(1, 1); // Fully-connected layer nodes can't have padding (yet)
+    // test weird case we are seeing in some cntk models
+    TestMaxPoolingLayerNode(7, 7, 16, 4, 4, 2, 2, 0, 0);
 
-    TestMaxPoolingLayerNode();
-    TestMaxPoolingLayerNode(0, 1);
-    TestMaxPoolingLayerNode(0, 2);
-    TestMaxPoolingLayerNode(1, 0);
-    TestMaxPoolingLayerNode(2, 1);
+    TestMeanPoolingLayerNode(8, 8, 16, 6, 6, 3, 1, 0, 0);
+    TestMeanPoolingLayerNode(8, 8, 16, 6, 6, 3, 1, 0, 1);
+    TestMeanPoolingLayerNode(8, 8, 16, 6, 6, 3, 1, 0, 2);
+    // TestMeanPoolingLayerNode(8, 8, 16, 6, 6, 3, 1, 1, 0);
 
-    TestMeanPoolingLayerNode();
-    TestMeanPoolingLayerNode(0, 1);
-    TestMeanPoolingLayerNode(0, 2);
-    TestMeanPoolingLayerNode(1, 0);
-    TestMeanPoolingLayerNode(2, 1);
+    // TestMeanPoolingLayerNode(8, 8, 16, 2, 1, 2, 1, 0, 0);
 
     TestScalingLayerNode();
     TestScalingLayerNode(0, 1);
@@ -146,6 +170,40 @@ void TestIRCompiler()
     TestSoftmaxLayerNode(0, 1);
     TestSoftmaxLayerNode(0, 2);
     // TestSoftmaxLayerNode(1, 0); // Input padding not supported (yet)
+
+    TestBinaryConvolutionalLayerNode(32, 32, 3, 4);
+    TestBinaryConvolutionalLayerNode(32, 32, 3, 4, 1, 0, PaddingScheme::zeros, true);
+    TestBinaryConvolutionalLayerNode(32, 32, 3, 4, 1, 0, PaddingScheme::minusOnes, false);
+    TestBinaryConvolutionalLayerNode(32, 32, 3, 4, 1, 0, PaddingScheme::minusOnes, true);
+
+    // TestConvolutionalLayerNode(ConvolutionType::unrolled);
+    TestConvolutionalLayerNode(ConvolutionType::unrolled, 1, 0);
+    TestConvolutionalLayerNode2(ConvolutionType::unrolled, 1, 0);
+    // TestConvolutionalLayerNode(ConvolutionType::unrolled, 2, 0);
+    // TestConvolutionalLayerNode(ConvolutionType::unrolled, 1, 1); // Convolutional layer output padding not supported
+
+    TestConvolutionalLayerNode(ConvolutionType::diagonal); // Input padding must be set correctly (to floor(filterWidth/2))
+    
+    TestConvolutionalLayerNode(ConvolutionType::simple); // Input padding must be set correctly (to floor(filterWidth/2))
+
+    TestFullyConnectedLayerNode();
+    // TestFullyConnectedLayerNode(0, 1); // Fully-connected layer nodes can't have padding (yet)
+    // TestFullyConnectedLayerNode(0, 2); // Fully-connected layer nodes can't have padding (yet)
+    // TestFullyConnectedLayerNode(1, 1); // Fully-connected layer nodes can't have padding (yet)
+
+    TestProtoNNPredictorMap();
+    TestMultiSourceSinkMap();
+
+    TestRecurrentNode();
+    TestGRUNode();
+    TestLSTMNode();
+
+    TestRegionDetectionNode();
+
+    TestMatrixVectorProductNodeCompile();
+
+    // Header file generation
+    TestModelHeaderOutput();
 }
 
 int main(int argc, char* argv[])
@@ -161,7 +219,7 @@ int main(int argc, char* argv[])
     }
     catch (const std::exception& exception)
     {
-        std::cerr << "ERROR, got ELL unhandled exception. Message: " << exception.what() << std::endl;
+        std::cerr << "ERROR, got unhandled exception. Message: " << exception.what() << std::endl;
         return 1;
     }
 

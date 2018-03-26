@@ -1,5 +1,4 @@
-from __future__ import print_function
-import ELL
+import ell
 from math import exp, log
 from testing import Testing
 
@@ -16,25 +15,25 @@ def compareTest(testing, name, compare, data):
     for (x, y, z) in data: f(x, y, z)
 
 def hingeLossTest(testing):
-    def f(y, t): return float(max(0, 1 - t*y))      # reference hingeloss 
+    def f(y, t): return float(max(0, 1 - t*y))      # reference hingeloss
     def df(y, t):                                   # derivative
         if t*y <= 1.0: return -float(t)
         else: return 0.0
-    x = ELL.ELL_HingeLoss()
+    x = ell.math.HingeLoss()
     compareTest(testing, "HingeLoss.Evaluate",  x.Evaluate, getData(f, hingeLossInput))
     compareTest(testing, "HingeLoss.GetDerivative", x.GetDerivative, getData(df, hingeLossInput))
 
 def logLossTest(testing):
     def f(y, t): return log(1.0 + exp(-y*t))        # reference logloss
     def df(y,t): return (-t/(1.0 + exp(y*t)))       # derivative
-    x = ELL.ELL_LogLoss()
+    x = ell.math.LogLoss()
     compareTest(testing, "LogLoss.Evaluate", x.Evaluate,  getData(f, logLossInput))
     compareTest(testing, "LogLoss.GetDerivative", x.GetDerivative, getData(df, logLossInput))
 
 def squaredLossTest(testing):
     def f(y, t): return 0.5 * (y - t) * (y - t)
     def df(y, t): return float(y - t)
-    x = ELL.ELL_SquaredLoss()
+    x = ell.math.SquaredLoss()
     compareTest(testing, "SquaredLoss.Evaluate", x.Evaluate, getData(f, squareLossInput))
     compareTest(testing, "SquaredLoss.GetDerivative", x.GetDerivative, getData(df, squareLossInput))
 

@@ -12,13 +12,13 @@ namespace nodes
 {
     template <typename ValueType>
     DotProductNode<ValueType>::DotProductNode()
-        : CompilableNode({ &_input1, &_input2 }, { &_output }), _input1(this, {}, input1PortName), _input2(this, {}, input2PortName), _output(this, outputPortName, 1)
+        : CompilableNode({ &_input1, &_input2 }, { &_output }), _input1(this, {}, defaultInput1PortName), _input2(this, {}, defaultInput2PortName), _output(this, defaultOutputPortName, 1)
     {
     }
 
     template <typename ValueType>
     DotProductNode<ValueType>::DotProductNode(const model::PortElements<ValueType>& input1, const model::PortElements<ValueType>& input2)
-        : CompilableNode({ &_input1, &_input2 }, { &_output }), _input1(this, input1, input1PortName), _input2(this, input2, input2PortName), _output(this, outputPortName, 1)
+        : CompilableNode({ &_input1, &_input2 }, { &_output }), _input1(this, input1, defaultInput1PortName), _input2(this, input2, defaultInput2PortName), _output(this, defaultOutputPortName, 1)
     {
     }
 
@@ -59,7 +59,7 @@ namespace nodes
     void DotProductNode<ValueType>::Compile(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function)
     {
         static_assert(!std::is_same<ValueType, bool>(), "Cannot instantiate boolean dot product nodes");
-        if ((IsPureVector(input1) && IsPureVector(input2)) && !compiler.GetCompilerParameters().unrollLoops)
+        if ((IsPureVector(input1) && IsPureVector(input2)) && !compiler.GetCompilerOptions().unrollLoops)
         {
             CompileDotProductLoop(compiler, function);
         }
@@ -76,9 +76,9 @@ namespace nodes
         llvm::Value* pRVector = compiler.EnsurePortEmitted(input2);
         int count = static_cast<int>(input1.Size());
         llvm::Value* pResult = compiler.EnsurePortEmitted(output);
-        if (compiler.GetCompilerParameters().inlineOperators)
+        if (compiler.GetCompilerOptions().inlineOperators)
         {
-            function.DotProductFloat(count, pLVector, pRVector, pResult);
+            function.DotProduct(count, pLVector, pRVector, pResult);
         }
         else
         {
@@ -91,7 +91,7 @@ namespace nodes
     {
         llvm::Value* pResult = compiler.EnsurePortEmitted(output);
 
-        function.Store(pResult, function.Literal(0.0));
+        function.StoreZero(pResult);
         for (size_t i = 0; i < input1.Size(); ++i)
         {
             llvm::Value* pLeftValue = compiler.LoadPortElementVariable(input1.GetInputElement(i));
@@ -105,16 +105,16 @@ namespace nodes
     void DotProductNode<ValueType>::WriteToArchive(utilities::Archiver& archiver) const
     {
         Node::WriteToArchive(archiver);
-        archiver[input1PortName] << _input1;
-        archiver[input2PortName] << _input2;
+        archiver[defaultInput1PortName] << _input1;
+        archiver[defaultInput2PortName] << _input2;
     }
 
     template <typename ValueType>
     void DotProductNode<ValueType>::ReadFromArchive(utilities::Unarchiver& archiver)
     {
         Node::ReadFromArchive(archiver);
-        archiver[input1PortName] >> _input1;
-        archiver[input2PortName] >> _input2;
+        archiver[defaultInput1PortName] >> _input1;
+        archiver[defaultInput2PortName] >> _input2;
     }
 }
 }

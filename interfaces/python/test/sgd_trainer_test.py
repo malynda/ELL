@@ -1,21 +1,20 @@
-from __future__ import print_function
-import ELL
+import ell
 
 def test():
-    params = ELL.SGDIncrementalTrainerParameters()
+    params = ell.SGDIncrementalTrainerParameters()
     params.regularization = 0.01
-    loss = ELL.LossArguments()
+    loss = ell.LossArguments()
 
-    trainer = ELL.GetSGDIncrementalTrainer(21, loss, params)
+    trainer = ell.GetSGDIncrementalTrainer(21, loss, params)
     print(type(trainer))
 
-    dataset = ELL.GetDataset("../../../../examples/data/testData.txt")
+    dataset = ell.GetDataset("../../../../examples/data/testData.txt")
     print(type(dataset))
 
     ex = dataset.GetExample(0)
     print(type(ex))
 
-    iterator = dataset.GetIterator(0, dataset.NumExamples()) 
+    iterator = dataset.GetIterator(0, dataset.NumExamples())
     print(type(iterator))
 
     try:

@@ -9,14 +9,18 @@ author:
 #  url:        https://github.com/Microsoft/ELL 
 
 # Gems
+plugins:
+  - jekyll-relative-links
 
 destination: ./_site
-plugins_dir:     ./_plugins
 layouts_dir:     ./_layouts
 data_dir: ./_data
 
 source: docs
 
+relative_links:
+  enabled:     true
+  collections: false
 
 # Handling Reading
 safe:         false
@@ -74,6 +78,8 @@ kramdown:
     coderay_bold_every:        10
     coderay_css:               style
 
+sass:
+    sass_dir: _sass
 
-include: ['_pages']
-
+liquid:
+  error_mode: strict

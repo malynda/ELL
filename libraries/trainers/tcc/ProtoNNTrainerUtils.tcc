@@ -38,13 +38,18 @@ namespace trainers
             double label = example.GetMetadata().label;
             const auto& dataVector = example.GetDataVector().ToArray();
 
-            for (int j = 0; j < dataVector.size(); j++)
+            for (size_t j = 0; j < dataVector.size(); j++)
             {
                 X(j, colIdx) = dataVector[j];
             }
 
-            Y((size_t)label, colIdx) = 1;
-            Y(1 - (size_t)label, colIdx) = 0;
+            for (size_t i = 0; i < Y.NumRows(); i++)
+            {
+                if (i == label)
+                    Y((size_t)i, colIdx) = 1;
+                else
+                    Y((size_t)i, colIdx) = 0;
+            }
 
             colIdx += 1;
             exampleIterator.Next();

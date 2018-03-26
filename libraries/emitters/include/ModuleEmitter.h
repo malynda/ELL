@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "CompilerOptions.h"
 #include "EmitterTypes.h"
 #include "TargetDevice.h"
 #include "Variable.h"
@@ -30,34 +31,26 @@ namespace emitters
         swigInterface
     };
 
-    /// <summary> Standard compiler switches. </summary>
-    struct CompilerParameters
-    {
-        bool unrollLoops = false;
-        bool inlineOperators = true;
-        bool useBlas = false;
-        bool optimize = true;
-        bool includeDiagnosticInfo = false;
-
-        TargetDevice targetDevice;
-    };
-
     /// <summary> Abstract base class for ELL compilers </summary>
     class ModuleEmitter
     {
     public:
-        ModuleEmitter();
         virtual ~ModuleEmitter() = default;
 
         /// <summary> Return the base compiler settings </summary>
         ///
         /// <returns> The settings for the compiler </returns>
-        const CompilerParameters& GetCompilerParameters() const { return _parameters; }
+        const CompilerOptions& GetCompilerOptions() const { return _options; }
 
         /// <summary> Set the base compiler settings </summary>
         ///
         /// <param name="parameters"> The settings for the compiler to use </param>
-        void SetCompilerParameters(const CompilerParameters& parameters);
+        virtual void SetCompilerOptions(const CompilerOptions& options);
+
+        /// <summary> Fills in missing values in the compiler settings </summary>
+        ///
+        /// <param name="parameters"> The compiler settings to fill in </param>
+        static void CompleteCompilerOptions(CompilerOptions& parameters);
 
         // Note, this differs from IRModuleEmitter::BeginFunction only by return type
         /// <summary> Set a function declaration. Note that BeginMapPredictFunction can't be called from within a function - it completes the currently-being-emitted function </summary>
@@ -89,28 +82,48 @@ namespace emitters
         /// <param name="comments"> The comments for the function. </param>
         virtual void SetFunctionComments(const std::string& functionName, const std::vector<std::string>& comments) = 0;
 
-        /// <summary> Indicates if the module or given function has the associated metadata. </summary>
+        /// <summary> Indicates if the module has the associated metadata. </summary>
+        ///
+        /// <param name="tag"> The metadata tag. </param>
+        ///
+        /// <returns> `true` if the module has the metadata associated with it. </returns>
+        virtual bool HasMetadata(const std::string& tag) = 0;
+
+        /// <summary> Indicates if a given function has the associated metadata. </summary>
         ///
         /// <param name="functionName"> The name of the function for function-level metadata, or empty string for the module. </param>
         /// <param name="tag"> The metadata tag. </param>
         ///
         /// <returns> `true` if the function has the metadata associated with it. </returns>
-        virtual bool HasMetadata(const std::string& functionName, const std::string& tag) = 0;
+        virtual bool HasFunctionMetadata(const std::string& functionName, const std::string& tag) = 0;
 
-        /// <summary> Gets the metadata associated with the module or given function. </summary>
+        /// <summary> Gets the metadata associated with the module. </summary>
         ///
-        /// <param name="functionName"> The name of the function for function-level metadata, or empty string for the module. </param>
         /// <param name="tag"> The metadata tag. </param>
         ///
         /// <returns> The metadata values, as a vector of strings. </returns>
-        virtual std::vector<std::string> GetMetadata(const std::string& functionName, const std::string& tag) = 0;
+        virtual std::vector<std::vector<std::string>> GetMetadata(const std::string& tag) = 0;
 
-        /// <summary> Associates metadata with the module or given function. </summary>
+        /// <summary> Gets the metadata associated with a given function. </summary>
         ///
-        /// <param name="functionName"> The name of the function for function-level metadata, or empty string for the module. </param>
+        /// <param name="functionName"> The name of the function. </param>
         /// <param name="tag"> The metadata tag. </param>
-        /// <param name="content"> Optional metadata content. </param>
-        virtual void InsertMetadata(const std::string& functionName, const std::string& tag, const std::string& value = "") = 0;
+        ///
+        /// <returns> The metadata values, as a vector of strings. </returns>
+        virtual std::vector<std::string> GetFunctionMetadata(const std::string& functionName, const std::string& tag) = 0;
+
+        /// <summary> Associates metadata with the module. </summary>
+        ///
+        /// <param name="tag"> The metadata tag. </param>
+        /// <param name="values"> Optional metadata content. </param>
+        virtual void InsertMetadata(const std::string& tag, const std::vector<std::string>& values = { "" }) = 0;
+
+        /// <summary> Associates metadata with a given function. </summary>
+        ///
+        /// <param name="functionName"> The name of the function. </param>
+        /// <param name="tag"> The metadata tag. </param>
+        /// <param name="values"> Optional metadata content. </param>
+        virtual void InsertFunctionMetadata(const std::string& functionName, const std::string& tag, const std::vector<std::string>& values = { "" }) = 0;
 
         /// <summary> Variable allocator </summary>
         ///
@@ -145,11 +158,12 @@ namespace emitters
         static ModuleOutputFormat GetFormatFromExtension(const std::string& extension);
 
     protected:
+        ModuleEmitter();
         void Reset();
         void FreeVariable(Variable& var);
 
     private:
-        CompilerParameters _parameters;
+        CompilerOptions _options;
 
         EmittedVariableAllocator _inputVars; // Runtime input variable table
         EmittedVariableAllocator _outputVars; // Runtime output variable table

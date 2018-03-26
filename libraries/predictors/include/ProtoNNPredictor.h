@@ -11,7 +11,7 @@
 #include "IPredictor.h"
 
 // math
-#include "Operations.h"
+#include "Matrix.h"
 
 // datasets
 #include "AutoDataVector.h"
@@ -27,13 +27,6 @@ namespace ell
 {
 namespace predictors
 {
-    /// <summary> Output of ProtoNN predictor, contains a prediction score and a label (0-based). </summary>
-    struct ProtoNNPrediction
-    {
-        double score;
-        size_t label;
-    };
-
     /// <summary> A ProtoNN predictor. </summary>
     ///
     class ProtoNNPredictor : public IPredictor<double>, public utilities::IArchivable
@@ -107,19 +100,26 @@ namespace predictors
         /// <summary> Gets the number of prototypes. </summary>
         ///
         /// <returns> The number of prototypes. </returns>
-        size_t GetNumPrototypes() const { return _Z.NumColumns(); }
+        size_t GetNumPrototypes() const { return _B.NumColumns(); }
 
         /// <summary> Gets the number of labels. </summary>
         ///
         /// <returns> The number of labels. </returns>
         size_t GetNumLabels() const { return _Z.NumRows(); }
 
-        /// <summary> Returns the label output of the predictor for a given example. </summary>
+        /// <summary> Returns the label scores. </summary>
         ///
         /// <param name="inputVector"> The data vector. </param>
         ///
-        /// <returns> The predicted label with its score. </returns>
-        ProtoNNPrediction Predict(const DataVectorType& inputVector) const;
+        /// <returns> The predicted label scores. </returns>
+        math::ColumnVector<double> Predict(const DataVectorType& inputVector) const;
+
+        /// <summary> Returns the label scores. </summary>
+        ///
+        /// <param name="inputVector"> The data vector. </param>
+        ///
+        /// <returns> The predicted label scores. </returns>
+        math::ColumnVector<double> Predict(const std::vector<double>& inputVector) const;
 
         /// <summary> Resets the projection predictor to the zero projection matrix. </summary>
         void Reset();
@@ -132,18 +132,14 @@ namespace predictors
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+        std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
     protected:
-        virtual void WriteToArchive(utilities::Archiver& archiver) const override;
-        virtual void ReadFromArchive(utilities::Unarchiver& archiver) override;
+        void WriteToArchive(utilities::Archiver& archiver) const override;
+        void ReadFromArchive(utilities::Unarchiver& archiver) override;
 
     private:
-        math::ColumnVector<double> GetLabelScores(const DataVectorType& inputVector) const;
-
-        static void WriteMatrixToArchive(utilities::Archiver& archiver, std::string rowLabel, std::string colLabel, std::string dataLabel, math::ConstMatrixReference<double, math::MatrixLayout::columnMajor> M);
-
-        static math::ColumnMatrix<double> ReadMatrixFromArchive(utilities::Unarchiver& archiver, std::string rowLabel, std::string colLabel, std::string dataLabel);
+        math::ColumnVector<double> GetLabelScores(const std::vector<double> &inputVector) const;
 
         // Input dimension
         size_t _dimension;

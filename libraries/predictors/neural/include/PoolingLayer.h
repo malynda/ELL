@@ -21,7 +21,7 @@ namespace predictors
 {
 namespace neural
 {
-    /// <summary> Specifies the hyper parameters of the convolutional layer. </summary>
+    /// <summary> Specifies the hyper parameters of the pooling layer. </summary>
     struct PoolingParameters
     {
         /// <summary> Width and height of the pooling field that is slid over the input. </summary>
@@ -38,7 +38,11 @@ namespace neural
     public:
         using PoolingFunction = PoolingFunctionType<ElementType>;
         using LayerParameters = typename Layer<ElementType>::LayerParameters;
+        using Layer<ElementType>::GetLayerParameters;
+        using Layer<ElementType>::GetInput;
         using Layer<ElementType>::GetOutputMinusPadding;
+        using Layer<ElementType>::GetInputShapeMinusPadding;
+        using Layer<ElementType>::GetOutputShapeMinusPadding;
         
         /// <summary> Instantiates an instance of a pooling layer. </summary>
         ///
@@ -62,6 +66,11 @@ namespace neural
         /// <returns> The pooling parameters struct. </returns>
         const PoolingParameters& GetPoolingParameters() const { return _poolingParameters; }
 
+        /// <summary> Indicates if this pooling layer uses padding when computing its output </summary>
+        ///
+        /// <returns> `true` if using padding (the first window is centered on the first input pixel), `false` if not using padding </returns>
+        bool UsesPadding() const;
+
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
@@ -70,11 +79,11 @@ namespace neural
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+        std::string GetRuntimeTypeName() const override { return GetTypeName(); }
         
     protected:
-        virtual void WriteToArchive(utilities::Archiver& archiver) const override;
-        virtual void ReadFromArchive(utilities::Unarchiver& archiver) override;
+        void WriteToArchive(utilities::Archiver& archiver) const override;
+        void ReadFromArchive(utilities::Unarchiver& archiver) override;
 
     private:
         using Layer<ElementType>::_layerParameters;

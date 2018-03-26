@@ -22,7 +22,7 @@ namespace neural
     {
         if (_layerParameters.input.Size() != GetOutputMinusPadding().Size())
         {
-            throw utilities::InputException(utilities::InputExceptionErrors::sizeMismatch, "Expected size of input and output tensor (minus padding) to match");
+            throw utilities::InputException(utilities::InputExceptionErrors::sizeMismatch, GetRuntimeTypeName() + ": Expected size of input and output tensor (minus padding) to match");
         }
     }
 
@@ -35,7 +35,7 @@ namespace neural
         AssignValues(input, output);
 
         ElementType sum = 0;
-        ElementType maxValue = -std::numeric_limits<ElementType>::max();
+        ElementType maxValue = std::numeric_limits<ElementType>::lowest();
 
         // Find the max
         for (size_t i = 0; i < input.NumRows(); i++)

@@ -18,7 +18,6 @@
 // utilities
 #include "Exception.h"
 #include "IArchivable.h"
-#include "Tokenizer.h"
 
 // stl
 #include <algorithm>
@@ -32,7 +31,6 @@ namespace ell
 namespace model
 {
     class Model;
-    class Node;
 
     /// <summary> Represents a single value from an output port </summary>
     class PortElementBase
@@ -175,7 +173,7 @@ namespace model
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+        std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
         /// <summary> Equality operator. </summary>
         ///
@@ -194,8 +192,8 @@ namespace model
         void Append(const PortRange& other);
 
     protected:
-        virtual void WriteToArchive(utilities::Archiver& archiver) const override;
-        virtual void ReadFromArchive(utilities::Unarchiver& archiver) override;
+        void WriteToArchive(utilities::Archiver& archiver) const override;
+        void ReadFromArchive(utilities::Unarchiver& archiver) override;
 
     private:
         const OutputPortBase* _referencedPort = nullptr;
@@ -275,8 +273,6 @@ namespace model
         /// <param name="ranges"> The ranges to construct this PortElements from. </param>
         PortElementsBase(const std::vector<PortRange>& ranges);
 
-        virtual ~PortElementsBase() = default;
-
         /// <summary> Returns the type of the values referenced </summary>
         ///
         /// <returns> The type of the values referenced </returns>
@@ -334,13 +330,13 @@ namespace model
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+        std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
     protected:
         void ComputeSize();
         void AddRange(const PortRange& range);
-        virtual void WriteToArchive(utilities::Archiver& archiver) const override;
-        virtual void ReadFromArchive(utilities::Unarchiver& archiver) override;
+        void WriteToArchive(utilities::Archiver& archiver) const override;
+        void ReadFromArchive(utilities::Unarchiver& archiver) override;
 
     private:
         std::vector<PortRange> _ranges;
@@ -353,10 +349,6 @@ namespace model
     {
     public:
         PortElements() = default;
-        PortElements(const PortElements<ValueType>&) = default;
-        PortElements(PortElements<ValueType>&&) = default;
-        PortElements<ValueType>& operator=(const PortElements<ValueType>&) = default;
-        PortElements<ValueType>& operator=(PortElements<ValueType>&&) = default;
 
         /// <summary> Creates a PortElements representing a single element from a given port </summary>
         ///
@@ -428,11 +420,6 @@ namespace model
         /// <returns> The specified element. </returns>
         PortElement<ValueType> GetElement(size_t index) const;
 
-        /// <summary> The port this element refers to </summary>
-        ///
-        /// <returns> The port this element refers to </returns>
-        const OutputPort<ValueType>* ReferencedPort() const { return static_cast<const OutputPort<ValueType>*>(this->PortElementBase::ReferencedPort()); }
-
         /// <summary> Appends a set of elements to this set of elements. </summary>
         ///
         /// <param name="other"> The PortElements to append to this one. </param>
@@ -446,7 +433,7 @@ namespace model
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+        std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
         //
         using value_type = ValueType;
@@ -531,8 +518,8 @@ namespace model
         bool IsFixedSize() const { return _isFixedSize; }
 
     protected:
-        virtual void WriteToArchive(utilities::Archiver& archiver) const override;
-        virtual void ReadFromArchive(utilities::Unarchiver& archiver) override;
+        void WriteToArchive(utilities::Archiver& archiver) const override;
+        void ReadFromArchive(utilities::Unarchiver& archiver) override;
 
     private:
         friend class PortElementsProxy;
@@ -579,8 +566,8 @@ namespace model
         static std::string GetTypeName() { return "PortElementProxy"; }
 
     protected:
-        virtual void WriteToArchive(utilities::Archiver& archiver) const override;
-        virtual void ReadFromArchive(utilities::Unarchiver& archiver) override;
+        void WriteToArchive(utilities::Archiver& archiver) const override;
+        void ReadFromArchive(utilities::Unarchiver& archiver) override;
 
     private:
         std::vector<PortRangeProxy> _ranges;
@@ -604,11 +591,10 @@ namespace std
 {
 /// <summary> Implements a hash function for the PortRange class, so that it can be used with associative containers (maps, sets, and the like). </summary>
 template <>
-class hash<ell::model::PortElementBase>
+struct hash<ell::model::PortElementBase>
 {
-public:
-    typedef ell::model::PortElementBase argument_type;
-    typedef std::size_t result_type;
+    using argument_type = ell::model::PortElementBase;
+    using result_type = std::size_t;
 
     /// <summary> Computes a hash of the input value. </summary>
     ///
@@ -617,11 +603,10 @@ public:
 };
 
 template <>
-class hash<ell::model::PortRange>
+struct hash<ell::model::PortRange>
 {
-public:
-    typedef ell::model::PortRange argument_type;
-    typedef std::size_t result_type;
+    using argument_type = ell::model::PortRange;
+    using result_type = std::size_t ;
 
     /// <summary> Computes a hash of the input value. </summary>
     ///

@@ -35,13 +35,31 @@ namespace emitters
     }
 
     template <typename ValueType>
+    llvm::Function* IRRuntime::GetTanhFunction()
+    {
+        return GetTanhFunction(GetVariableType<ValueType>());
+    }
+
+    template <typename ValueType>
+    llvm::Function* IRRuntime::GetSinFunction()
+    {
+        return GetSinFunction(GetVariableType<ValueType>());
+    }
+
+    template <typename ValueType>
+    llvm::Function* IRRuntime::GetCosFunction()
+    {
+        return GetCosFunction(GetVariableType<ValueType>());
+    }
+
+    template <typename ValueType>
     llvm::Function* IRRuntime::GetDotProductFunction()
     {
         if (std::is_integral<std::decay_t<ValueType>>::value)
         {
             if (_pDotProductFunction == nullptr)
             {
-                _pDotProductFunction = EmitDotProductFunction();
+                _pDotProductFunction = GetDotProductIntFunction();
             }
             return _pDotProductFunction;
         }
@@ -49,7 +67,7 @@ namespace emitters
         {
             if (_pDotProductFunctionFloat == nullptr)
             {
-                _pDotProductFunctionFloat = EmitDotProductFunctionF();
+                _pDotProductFunctionFloat = GetDotProductFloatFunction();
             }
             return _pDotProductFunctionFloat;
         }

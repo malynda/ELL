@@ -8,11 +8,10 @@
 
 #pragma once
 
-#include "NeuralNetworkLayerNode.h"
-
 // model
 #include "IRMapCompiler.h"
 #include "ModelTransformer.h"
+#include "NeuralNetworkLayerNode.h"
 #include "PortElements.h"
 
 // predictors
@@ -36,14 +35,12 @@ namespace nodes
 
         /// @name Input and Output Ports
         /// @{
-        using BaseType::inputPortName; // "input"
-        using BaseType::outputPortName; // "output"
         using BaseType::input;
         using BaseType::output;
         /// @}
 
         BiasLayerNode() = default;
-        
+
         /// <summary> Constructor from a layer. </summary>
         ///
         /// <param name="input"> </param>
@@ -58,13 +55,13 @@ namespace nodes
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+        std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
         /// <summary> Indicates if this node is able to compile itself to code. </summary>
-        virtual bool IsCompilable() const override { return false; }
+        bool IsCompilable(const model::MapCompiler* compiler) const override { return false; }
 
     protected:
-        virtual bool Refine(model::ModelTransformer& transformer) const override;
+        bool Refine(model::ModelTransformer& transformer) const override;
     };
 }
 }

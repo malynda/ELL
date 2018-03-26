@@ -130,10 +130,20 @@ namespace data
     }
 
     template <class DerivedType>
-    void DataVectorBase<DerivedType>::AppendElements(std::vector<double> vec)
+    void DataVectorBase<DerivedType>::AppendElements(const std::vector<double>& vec)
     {
         size_t index = 0;
         for (double current : vec)
+        {
+            static_cast<DerivedType*>(this)->AppendElement(index++, current);
+        }
+    }
+
+    template <class DerivedType>
+    void DataVectorBase<DerivedType>::AppendElements(const std::vector<float>& vec)
+    {
+        size_t index = 0;
+        for (float current : vec)
         {
             static_cast<DerivedType*>(this)->AppendElement(index++, current);
         }
@@ -155,7 +165,7 @@ namespace data
     }
 
     template <class DerivedType>
-    double DataVectorBase<DerivedType>::Dot(const math::UnorientedConstVectorReference<double> vector) const
+    double DataVectorBase<DerivedType>::Dot(math::UnorientedConstVectorBase<double> vector) const
     {
         auto indexValueIterator = GetIterator<DerivedType, IterationPolicy::skipZeros>(*static_cast<const DerivedType*>(this));
 
@@ -169,6 +179,26 @@ namespace data
                 break;
             }
             result += indexValue.value * vector[indexValue.index];
+            indexValueIterator.Next();
+        }
+        return result;
+    }
+
+    template <class DerivedType>
+    float DataVectorBase<DerivedType>::Dot(math::UnorientedConstVectorBase<float> vector) const
+    {
+        auto indexValueIterator = GetIterator<DerivedType, IterationPolicy::skipZeros>(*static_cast<const DerivedType*>(this));
+
+        float result = 0.0;
+        auto size = vector.Size();
+        while (indexValueIterator.IsValid())
+        {
+            auto indexValue = indexValueIterator.Get();
+            if (indexValue.index >= size)
+            {
+                break;
+            }
+            result += static_cast<float>(indexValue.value) * vector[indexValue.index];
             indexValueIterator.Next();
         }
         return result;

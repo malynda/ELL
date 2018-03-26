@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "Exception.h"
+#include "ArchiveVersion.h"
 #include "TypeFactory.h"
 #include "TypeName.h"
 #include "TypeTraits.h"
@@ -17,7 +17,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -28,6 +30,7 @@ namespace utilities
 {
     class IArchivable;
     class ArchivedAsPrimitive;
+    class Variant;
 
     /// <summary> Enabled if ValueType inherits from IArchivable. </summary>
     template <typename ValueType>
@@ -49,29 +52,70 @@ namespace utilities
     template <typename ValueType>
     using IsNotArchivable = typename std::enable_if_t<(!std::is_base_of<IArchivable, typename std::decay<ValueType>::type>::value) && (!std::is_fundamental<typename std::decay<ValueType>::type>::value), int>;
 
-    /// <summary> A context object used during deserialization. Contains a GenericTypeFactory. </summary>
+    /// <summary> A registry of functions to enable Variant deserialization. </summary>
+    class VariantTypeRegistry
+    {
+        void SetVariantType(Variant& variant, const std::string& typeName)
+        {
+            auto it = _functionMap.find(typeName);
+            if (it != _functionMap.end())
+            {
+                (it->second)(variant);
+            }
+        }
+
+        bool IsEmpty() const { return _functionMap.empty(); }
+
+    private:
+        friend class Variant;
+
+        template <typename ValueType>
+        void SetVariantTypeFunction(std::function<void(Variant&)> f)
+        {
+            auto typeName = ::ell::utilities::GetTypeName<ValueType>();
+            _functionMap[typeName] = f;
+        }
+        std::unordered_map<std::string, std::function<void(Variant&)>> _functionMap;
+    };
+
+    /// <summary> A context object used during deserialization. Contains a GenericTypeFactory and a VariantTypeRegistry. </summary>
     class SerializationContext
     {
     public:
+        SerializationContext() = default;
+        SerializationContext(const SerializationContext&) = default;
+        SerializationContext(SerializationContext&&) = default;
+
         virtual ~SerializationContext() = default;
 
         /// <summary> Gets the type factory associated with this context. </summary>
         ///
         /// <returns> The type factory associated with this context. </returns>
-        virtual GenericTypeFactory& GetTypeFactory() { return _typeFactory; }
+        GenericTypeFactory& GetTypeFactory();
+
+        /// <summary> Gets the variant type registry associated with this context. </summary>
+        /// Used by Variant to enable deserialization.
+        ///
+        /// <returns> The variant type registry associated with this context. </returns>
+        VariantTypeRegistry& GetVariantTypeRegistry();
+
+        /// <summary> Gets the previous context in a stack of contexts </summary>
+        ///
+        /// <returns> The SerializationContext from the previous stack frame. Returns nullptr if there is no previous context on the stack. </returns>
+        SerializationContext* GetPreviousContext() { return _previousContext; }
+
+    protected:
+        struct c_tor {}; // tag struct for calling constructor that stores a previous context
+        SerializationContext(SerializationContext& previousContext, c_tor)
+            : _previousContext(&previousContext) {}
 
     private:
+        friend class Variant;
+
+        SerializationContext* _previousContext = nullptr;
         GenericTypeFactory _typeFactory;
+        VariantTypeRegistry _variantTypeRegistry;
     };
-
-    /// <summary> Type to represent archive versions </summary>
-    struct ArchiveVersion
-    {
-        int versionNumber; // 0 == None
-    };
-
-    bool operator==(const ArchiveVersion& a, const ArchiveVersion& b);
-    bool operator!=(const ArchiveVersion& a, const ArchiveVersion& b);
 
     /// <summary> Info struct for archived objects </summary>
     struct ArchivedObjectInfo
@@ -80,12 +124,42 @@ namespace utilities
         ArchiveVersion version;
     };
 
-/// <summary> Macros to make repetitive boilerplate code in archiver implementations easier to implement. </summary>
-#define DECLARE_ARCHIVE_VALUE_BASE(type) virtual void ArchiveValue(const char* name, type value, IsFundamental<type> dummy = 0) = 0;
-#define DECLARE_ARCHIVE_ARRAY_BASE(type) virtual void ArchiveArray(const char* name, const std::vector<type>& value, IsFundamental<type> dummy = 0) = 0;
+    bool operator==(const ArchivedObjectInfo& a, const ArchivedObjectInfo& b);
+    bool operator!=(const ArchivedObjectInfo& a, const ArchivedObjectInfo& b);
 
-#define DECLARE_ARCHIVE_VALUE_OVERRIDE(type) virtual void ArchiveValue(const char* name, type value, IsFundamental<type> dummy = 0) override;
-#define DECLARE_ARCHIVE_ARRAY_OVERRIDE(type) virtual void ArchiveArray(const char* name, const std::vector<type>& value, IsFundamental<type> dummy = 0) override;
+/// <summary> Macros to make repetitive boilerplate code in archiver implementations easier to implement. </summary>
+
+// On most platforms, uint64_t is an alias to `unsigned long`. However, on macOS, uint64_t is an alias of `unsigned long long`,
+// so we need to add 'unsigned long' when compiling on the Mac to make sure it is archivable.
+#if defined(__APPLE__)
+#define ARCHIVABLE_TYPES_LIST      \
+    ARCHIVE_TYPE_OP(bool)          \
+    ARCHIVE_TYPE_OP(char)          \
+    ARCHIVE_TYPE_OP(short)         \
+    ARCHIVE_TYPE_OP(int)           \
+    ARCHIVE_TYPE_OP(unsigned int)  \
+    ARCHIVE_TYPE_OP(unsigned long) \
+    ARCHIVE_TYPE_OP(int64_t)       \
+    ARCHIVE_TYPE_OP(uint64_t)      \
+    ARCHIVE_TYPE_OP(float)         \
+    ARCHIVE_TYPE_OP(double)
+#else
+#define ARCHIVABLE_TYPES_LIST     \
+    ARCHIVE_TYPE_OP(bool)         \
+    ARCHIVE_TYPE_OP(char)         \
+    ARCHIVE_TYPE_OP(short)        \
+    ARCHIVE_TYPE_OP(int)          \
+    ARCHIVE_TYPE_OP(unsigned int) \
+    ARCHIVE_TYPE_OP(int64_t)      \
+    ARCHIVE_TYPE_OP(uint64_t)     \
+    ARCHIVE_TYPE_OP(float)        \
+    ARCHIVE_TYPE_OP(double)
+#endif
+
+#define DECLARE_ARCHIVE_VALUE_BASE(type) virtual void ArchiveValue(const char* name, type value, IsFundamental<type> = true) = 0;
+#define DECLARE_ARCHIVE_ARRAY_BASE(type) virtual void ArchiveArray(const char* name, const std::vector<type>& value, IsFundamental<type> = true) = 0;
+#define DECLARE_ARCHIVE_VALUE_OVERRIDE(type) void ArchiveValue(const char* name, type value, IsFundamental<type> = true) override;
+#define DECLARE_ARCHIVE_ARRAY_OVERRIDE(type) void ArchiveArray(const char* name, const std::vector<type>& value, IsFundamental<type> = true) override;
 
     /// <summary>
     /// The Archiver and Unarchiver abstract base classes facilitate serialization and
@@ -198,32 +272,19 @@ namespace utilities
         PropertyArchiver operator[](const std::string& name);
 
     protected:
-        // These are all the virtual function that need to be implemented by archivers
-        DECLARE_ARCHIVE_VALUE_BASE(bool);
-        DECLARE_ARCHIVE_VALUE_BASE(char);
-        DECLARE_ARCHIVE_VALUE_BASE(short);
-        DECLARE_ARCHIVE_VALUE_BASE(int);
-        DECLARE_ARCHIVE_VALUE_BASE(size_t);
-        DECLARE_ARCHIVE_VALUE_BASE(int64_t);
-#ifdef __APPLE__
-        DECLARE_ARCHIVE_VALUE_BASE(uint64_t);
-#endif
-        DECLARE_ARCHIVE_VALUE_BASE(float);
-        DECLARE_ARCHIVE_VALUE_BASE(double);
+// These are all the virtual function that need to be implemented by archivers
+
+#define ARCHIVE_TYPE_OP(t) DECLARE_ARCHIVE_VALUE_BASE(t);
+        ARCHIVABLE_TYPES_LIST
+#undef ARCHIVE_TYPE_OP
+
         virtual void ArchiveValue(const char* name, const std::string& value) = 0;
         virtual void ArchiveValue(const char* name, const IArchivable& value);
 
-        DECLARE_ARCHIVE_ARRAY_BASE(bool);
-        DECLARE_ARCHIVE_ARRAY_BASE(char);
-        DECLARE_ARCHIVE_ARRAY_BASE(short);
-        DECLARE_ARCHIVE_ARRAY_BASE(int);
-        DECLARE_ARCHIVE_ARRAY_BASE(size_t);
-        DECLARE_ARCHIVE_ARRAY_BASE(int64_t);
-#ifdef __APPLE__
-        DECLARE_ARCHIVE_ARRAY_BASE(uint64_t);
-#endif
-        DECLARE_ARCHIVE_ARRAY_BASE(float);
-        DECLARE_ARCHIVE_ARRAY_BASE(double);
+#define ARCHIVE_TYPE_OP(t) DECLARE_ARCHIVE_ARRAY_BASE(t);
+        ARCHIVABLE_TYPES_LIST
+#undef ARCHIVE_TYPE_OP
+
         virtual void ArchiveArray(const char* name, const std::vector<std::string>& array) = 0;
         virtual void ArchiveArray(const char* name, const std::string& baseTypeName, const std::vector<const IArchivable*>& array) = 0;
 
@@ -236,29 +297,29 @@ namespace utilities
         ArchiveVersion GetArchiveVersion(const IArchivable& value) const;
 
     private:
-        template <typename ValueType, IsNotVector<ValueType> concept = 0>
+        template <typename ValueType, IsNotVector<ValueType> concept = true>
         void ArchiveItem(const char* name, ValueType&& value);
 
         template <typename ValueType>
         void ArchiveItem(const char* name, ValueType* value);
 
-        template <typename ValueType, IsFundamental<ValueType> concept = 0>
+        template <typename ValueType, IsFundamental<ValueType> concept = true>
         void ArchiveItem(const char* name, const std::vector<ValueType>& value);
 
         void ArchiveItem(const char* name, const std::vector<std::string>& value);
 
-        template <typename ValueType, IsIArchivable<ValueType> concept = 0>
+        template <typename ValueType, IsIArchivable<ValueType> concept = true>
         void ArchiveItem(const char* name, const std::vector<ValueType>& value);
 
-        template <typename ValueType, IsIArchivable<ValueType> concept = 0>
+        template <typename ValueType, IsIArchivable<ValueType> concept = true>
         void ArchiveItem(const char* name, const std::vector<const ValueType*>& value);
     };
 
 /// <summary> Macros to make repetitive boilerplate code in unarchiver implementations easier to implement. </summary>
-#define DECLARE_UNARCHIVE_VALUE_BASE(type) virtual void UnarchiveValue(const char* name, type& value, IsFundamental<type> dummy = 0) = 0;
-#define DECLARE_UNARCHIVE_ARRAY_BASE(type) virtual void UnarchiveArray(const char* name, std::vector<type>& value, IsFundamental<type> dummy = 0) = 0;
-#define DECLARE_UNARCHIVE_VALUE_OVERRIDE(type) virtual void UnarchiveValue(const char* name, type& value, IsFundamental<type> dummy = 0) override;
-#define DECLARE_UNARCHIVE_ARRAY_OVERRIDE(type) virtual void UnarchiveArray(const char* name, std::vector<type>& value, IsFundamental<type> dummy = 0) override;
+#define DECLARE_UNARCHIVE_VALUE_BASE(type) virtual void UnarchiveValue(const char* name, type& value, IsFundamental<type> = true) = 0;
+#define DECLARE_UNARCHIVE_ARRAY_BASE(type) virtual void UnarchiveArray(const char* name, std::vector<type>& value, IsFundamental<type> = true) = 0;
+#define DECLARE_UNARCHIVE_VALUE_OVERRIDE(type) void UnarchiveValue(const char* name, type& value, IsFundamental<type> = true) override;
+#define DECLARE_UNARCHIVE_ARRAY_OVERRIDE(type) void UnarchiveArray(const char* name, std::vector<type>& value, IsFundamental<type> = true) override;
 
     /// <summary> Unarchiver class </summary>
     class Unarchiver
@@ -281,6 +342,28 @@ namespace utilities
             Unarchiver& _unarchiver;
             std::string _propertyName;
         };
+
+        /// <summary> Represents an unarchiver that is scoped to an optional property. </summary>
+        template <typename DefaultValueType>
+        class OptionalPropertyUnarchiver
+        {
+        public:
+            /// <summary> Reads the property from the archive. </summary>
+            ///
+            /// <typeparam name="ValueType"> The type of the property. </typeparam>
+            /// <param name="value"> The variable to read the property into. </param>
+            template <typename ValueType>
+            void operator>>(ValueType&& value);
+
+        private:
+            friend class Unarchiver;
+            OptionalPropertyUnarchiver(Unarchiver& unarchiver, const std::string& name, const DefaultValueType& defaultValue);
+            Unarchiver& _unarchiver;
+            std::string _propertyName;
+            DefaultValueType _defaultValue;
+        };
+
+        struct NoDefault {}; // tag type to denote that we don't have a default value
 
         /// <summary> Constructor </summary>
         ///
@@ -312,7 +395,41 @@ namespace utilities
         /// <summary> Get an unarchiver scoped to a particular property name. </summary>
         ///
         /// <param name="name"> The name of the property </param>
+        ///
+        /// <returns>
+        /// An unarchiver object that can unarchive a property with the given name.
+        /// </returns>
         PropertyUnarchiver operator[](const std::string& name);
+
+        /// <summary> Get an unarchiver for an optional property. </summary>
+        ///
+        /// <param name="name"> The name of the property </param>
+        ///
+        /// <returns>
+        /// An unarchiver object that can unarchive an optional property with the given name, if it exists.
+        /// If it is unable to unarchive a property with the given name, it is not an error.
+        /// </returns>
+        OptionalPropertyUnarchiver<NoDefault> OptionalProperty(const std::string& name);
+
+        /// <summary> Get an unarchiver for an optional property with a default value. </summary>
+        ///
+        /// <typeparam name="DefaultValueType"> The type of the default value provided for the property </typeparam>
+        /// <param name="name"> The name of the property </param>
+        /// <param name="defaultValue"> The value to use for the property if it is not present </param>
+        ///
+        /// <returns>
+        /// An unarchiver object that can unarchive an optional property with the given name, if it exists.
+        /// If it is unable to unarchive a property with the given name, it is not an error.
+        /// </returns>
+        template <typename DefaultValueType>
+        OptionalPropertyUnarchiver<DefaultValueType> OptionalProperty(const std::string& name, const DefaultValueType& defaultValue);
+
+        /// <summary> Indicates if a property with the given name is available to be read next </summary>
+        ///
+        /// <param name="name"> The name of the property </param>
+        ///
+        /// <returns> true if a property with the given name can be read next </returns>
+        virtual bool HasNextPropertyName(const std::string& name) = 0;
 
         /// <summary> Set a new serialization context to be current </summary>
         ///
@@ -327,32 +444,23 @@ namespace utilities
         /// <returns> The current serialization context </returns>
         SerializationContext& GetContext() { return _contexts.back(); }
 
+        /// <summary> Get the information about the object currently being unarchived </summary>
+        ///
+        /// <returns> The ArchivedObjectInfo for the object currently being unarchived </returns>
+        ArchivedObjectInfo GetCurrentObjectInfo() const;
+
     protected:
-        DECLARE_UNARCHIVE_VALUE_BASE(bool);
-        DECLARE_UNARCHIVE_VALUE_BASE(char);
-        DECLARE_UNARCHIVE_VALUE_BASE(short);
-        DECLARE_UNARCHIVE_VALUE_BASE(int);
-        DECLARE_UNARCHIVE_VALUE_BASE(size_t);
-        DECLARE_UNARCHIVE_VALUE_BASE(int64_t);
-#ifdef __APPLE__
-        DECLARE_UNARCHIVE_VALUE_BASE(uint64_t);
-#endif
-        DECLARE_UNARCHIVE_VALUE_BASE(float);
-        DECLARE_UNARCHIVE_VALUE_BASE(double);
+#define ARCHIVE_TYPE_OP(t) DECLARE_UNARCHIVE_VALUE_BASE(t);
+        ARCHIVABLE_TYPES_LIST
+#undef ARCHIVE_TYPE_OP
+
         virtual void UnarchiveValue(const char* name, std::string& value) = 0;
         virtual void UnarchiveValue(const char* name, IArchivable& value);
 
-        DECLARE_UNARCHIVE_ARRAY_BASE(bool);
-        DECLARE_UNARCHIVE_ARRAY_BASE(char);
-        DECLARE_UNARCHIVE_ARRAY_BASE(short);
-        DECLARE_UNARCHIVE_ARRAY_BASE(int);
-        DECLARE_UNARCHIVE_ARRAY_BASE(size_t);
-        DECLARE_UNARCHIVE_ARRAY_BASE(int64_t);
-#ifdef __APPLE__
-        DECLARE_UNARCHIVE_ARRAY_BASE(uint64_t);
-#endif
-        DECLARE_UNARCHIVE_ARRAY_BASE(float);
-        DECLARE_UNARCHIVE_ARRAY_BASE(double);
+#define ARCHIVE_TYPE_OP(t) DECLARE_UNARCHIVE_ARRAY_BASE(t);
+        ARCHIVABLE_TYPES_LIST
+#undef ARCHIVE_TYPE_OP
+
         virtual void UnarchiveArray(const char* name, std::vector<std::string>& array) = 0;
 
         // Extra functions needed for deserializing arrays.
@@ -372,45 +480,68 @@ namespace utilities
     private:
         SerializationContext _baseContext;
         std::vector<std::reference_wrapper<SerializationContext>> _contexts;
+        std::vector<ArchivedObjectInfo> _objectInfo;
 
         // non-vector standard thing
-        template <typename ValueType, IsNotVector<ValueType> concept1 = 0, IsNotArchivedAsPrimitive<ValueType> concept2 = 0>
+        template <typename ValueType, IsNotVector<ValueType> concept1 = true, IsNotArchivedAsPrimitive<ValueType> concept2 = true>
         void UnarchiveItem(const char* name, ValueType&& value);
 
         // non-vector archivable-as-fundamental
-        template <typename ValueType, IsNotVector<ValueType> concept1 = 0, IsArchivedAsPrimitive<ValueType> concept2 = 0>
+        template <typename ValueType, IsNotVector<ValueType> concept1 = true, IsArchivedAsPrimitive<ValueType> concept2 = true>
         void UnarchiveItem(const char* name, ValueType&& value);
 
         // unique pointer to non-archivable object
-        template <typename ValueType, IsNotArchivable<ValueType> concept = 0>
+        template <typename ValueType, IsNotArchivable<ValueType> concept = true>
         void UnarchiveItem(const char* name, std::unique_ptr<ValueType>& value);
 
         // unique pointer to standard archivable object
-        template <typename ValueType, IsStandardArchivable<ValueType> concept = 0>
+        template <typename ValueType, IsStandardArchivable<ValueType> concept = true>
         void UnarchiveItem(const char* name, std::unique_ptr<ValueType>& value);
 
         // unique pointer to archived-as-primitive object
-        template <typename ValueType, IsArchivedAsPrimitive<ValueType> concept = 0>
+        template <typename ValueType, IsArchivedAsPrimitive<ValueType> concept = true>
         void UnarchiveItem(const char* name, std::unique_ptr<ValueType>& value);
 
         // vector of fundamental values
-        template <typename ValueType, IsFundamental<ValueType> concept = 0>
+        template <typename ValueType, IsFundamental<ValueType> concept = true>
         void UnarchiveItem(const char* name, std::vector<ValueType>& value);
 
         // vector of strings
         void UnarchiveItem(const char* name, std::vector<std::string>& value);
 
         // vector of IArchivable values
-        template <typename ValueType, IsIArchivable<ValueType> concept = 0>
+        template <typename ValueType, IsIArchivable<ValueType> concept = true>
         void UnarchiveItem(const char* name, std::vector<ValueType>& value);
 
         // vector of unique pointers to IArchivable
-        template <typename ValueType, IsIArchivable<ValueType> concept = 0>
+        template <typename ValueType, IsIArchivable<ValueType> concept = true>
         void UnarchiveItem(const char* name, std::vector<std::unique_ptr<ValueType>>& value);
 
         // vector of pointers to IArchivable
-        template <typename ValueType, IsIArchivable<ValueType> concept = 0>
+        template <typename ValueType, IsIArchivable<ValueType> concept = true>
         void UnarchiveItem(const char* name, std::vector<const ValueType*>& value);
+    };
+
+    //
+    // Utility classes useful to Archivers
+    //
+
+    /// <summary> A class that manages stream precision for
+    /// floating point numbers, ensuring that maximum precision is
+    /// set after the constructor, and reset to its previous values
+    /// when it goes out of scope.
+    /// </summary>
+    template <typename ValueType>
+    class EnsureMaxPrecision
+    {
+    public:
+        EnsureMaxPrecision(std::ostream& out);
+        ~EnsureMaxPrecision();
+
+    private:
+        std::ios::fmtflags _flags;
+        std::streamsize _precision;
+        std::ostream& _out;
     };
 
     //
@@ -433,15 +564,15 @@ namespace utilities
 
 /// <summary> Macros to make repetitive boilerplate code in archiver implementations easier to implement. </summary>
 #define IMPLEMENT_ARCHIVE_VALUE(base, type) \
-    void base::ArchiveValue(const char* name, type value, IsFundamental<type> dummy) { WriteScalar(name, value); }
+    void base::ArchiveValue(const char* name, type value, IsFundamental<type>) { WriteScalar(name, value); }
 #define IMPLEMENT_ARCHIVE_ARRAY(base, type) \
-    void base::ArchiveArray(const char* name, const std::vector<type>& value, IsFundamental<type> dummy) { WriteArray(name, value); }
+    void base::ArchiveArray(const char* name, const std::vector<type>& value, IsFundamental<type>) { WriteArray(name, value); }
 
 /// <summary> Macros to make repetitive boilerplate code in unarchiver implementations easier to implement. </summary>
 #define IMPLEMENT_UNARCHIVE_VALUE(base, type) \
-    void base::UnarchiveValue(const char* name, type& value, IsFundamental<type> dummy) { ReadScalar(name, value); }
+    void base::UnarchiveValue(const char* name, type& value, IsFundamental<type>) { ReadScalar(name, value); }
 #define IMPLEMENT_UNARCHIVE_ARRAY(base, type) \
-    void base::UnarchiveArray(const char* name, std::vector<type>& value, IsFundamental<type> dummy) { ReadArray(name, value); }
+    void base::UnarchiveArray(const char* name, std::vector<type>& value, IsFundamental<type>) { ReadArray(name, value); }
 }
 }
 

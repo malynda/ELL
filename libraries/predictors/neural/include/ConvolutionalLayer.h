@@ -22,9 +22,11 @@ namespace neural
     enum class ConvolutionMethod : int
     {
         /// <summary> Normal method of doing convolution via reshaping input into columns and performing a gemm operation. </summary>
-        columnwise = 0,
+        unrolled = 0,
         /// <summary> A different method of doing convolution which avoids reshaping the input, and uses gemm on smaller matrices with diagonal sums to create output. </summary>
-        diagonal = 1
+        diagonal = 1,
+        /// <summary> A simple, straightforward nested-loop implementation. </summary>
+        simple,
     };
 
     /// <summary> Specifies the hyper parameters of the convolutional layer. </summary>
@@ -66,7 +68,7 @@ namespace neural
         ConvolutionalLayer(const LayerParameters& layerParameters, const ConvolutionalParameters& convolutionalParameters, TensorType weights);
 
         /// <summary> Instantiates a blank instance. Used for unarchiving purposes only. </summary>
-        ConvolutionalLayer() : _weights(math::Triplet{0, 0, 0}), _shapedInput(0, 0), _weightsMatrix(0, 0), _outputMatrix(0 ,0){}
+        ConvolutionalLayer() : _weights(math::IntegerTriplet{0, 0, 0}), _shapedInput(0, 0), _weightsMatrix(0, 0), _outputMatrix(0 ,0){}
 
         /// <summary> Feeds the input forward through the layer and returns a reference to the output. </summary>
         void Compute() override;
@@ -89,7 +91,7 @@ namespace neural
         /// <summary> Get the weights for the convolution filters. </summary>
         ///
         /// <returns> The weights, packed into a Matrix. </returns>
-        const MatrixType& GetWeightsMatrix() const { return _weightsMatrix; }
+        const MatrixType& GetWeightsMatrix() const { return _weightsMatrix; } // Doesn't work
 
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
@@ -99,11 +101,11 @@ namespace neural
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+        std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
     protected:
-        virtual void WriteToArchive(utilities::Archiver& archiver) const override;
-        virtual void ReadFromArchive(utilities::Unarchiver& archiver) override;
+        void WriteToArchive(utilities::Archiver& archiver) const override;
+        void ReadFromArchive(utilities::Unarchiver& archiver) override;
 
     private:
         // Fills a matrix (backed by the array outputMatrix) where the columns the set of input values corresponding to a filter, stretched into a vector.

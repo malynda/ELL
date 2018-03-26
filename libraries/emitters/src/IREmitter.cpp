@@ -9,9 +9,12 @@
 #include "IREmitter.h"
 #include "EmitterException.h"
 
+// llvm
+#include <llvm/IR/InstrTypes.h>
+#include <llvm/IR/Type.h>
+
 // stl
 #include <algorithm>
-#include <iostream>
 
 namespace ell
 {
@@ -25,20 +28,30 @@ namespace emitters
         void ValidateArguments(llvm::Function* f, const IRValueList& args)
         {
             llvm::FunctionType* fType = f->getFunctionType();
-            int numArgs = std::min((int)args.size(), (int)fType->getNumParams());
-            for (int index = 0; index < numArgs; ++index)
+            auto numArgs = args.size();
+            if (f->isVarArg()) // If the function is a varargs function, don't check the extra varargs parameters
+            {
+                numArgs = fType->getNumParams();
+            }
+
+            if (numArgs > args.size())
+            {
+                throw EmitterException(EmitterError::badFunctionArguments, "wrong number of arguments for function");
+            }
+
+            for (size_t index = 0; index < numArgs; ++index)
             {
                 auto paramType = fType->getParamType(index);
                 auto argType = args[index]->getType();
-                if(paramType == nullptr)
+                if (paramType == nullptr)
                 {
                     throw EmitterException(EmitterError::badFunctionDefinition, "function has null parameter type");
                 }
-                if(argType == nullptr)
+                if (argType == nullptr)
                 {
                     throw EmitterException(EmitterError::badFunctionArguments, "function being called with null parameter type");
                 }
-                if(paramType != argType)
+                if (paramType != argType)
                 {
                     throw EmitterException(EmitterError::badFunctionArguments, "mismatched types for function");
                 }
@@ -58,41 +71,51 @@ namespace emitters
     {
         switch (type)
         {
-            case VariableType::Void:
-                return GetVariableType(type);
-            case VariableType::VoidPointer:
-                return GetVariableType(VariableType::Void)->getPointerTo();
-            case VariableType::Byte:
-                return GetVariableType(type);
-            case VariableType::BytePointer:
-                return GetVariableType(VariableType::Byte)->getPointerTo();
-            case VariableType::Short:
-                return GetVariableType(type);
-            case VariableType::ShortPointer:
-                return GetVariableType(VariableType::Short)->getPointerTo();
-            case VariableType::Int32:
-                return GetVariableType(type);
-            case VariableType::Int32Pointer:
-                return GetVariableType(VariableType::Int32)->getPointerTo();
-            case VariableType::Int64:
-                return GetVariableType(type);
-            case VariableType::Int64Pointer:
-                return GetVariableType(VariableType::Int64)->getPointerTo();
-            case VariableType::Float:
-                return GetVariableType(type);
-            case VariableType::FloatPointer:
-                return GetVariableType(VariableType::Float)->getPointerTo();
-            case VariableType::Double:
-                return GetVariableType(type);
-            case VariableType::DoublePointer:
-                return GetVariableType(VariableType::Double)->getPointerTo();
-            case VariableType::Char8:
-                return GetVariableType(type);
-            case VariableType::Char8Pointer:
-                return GetVariableType(VariableType::Char8)->getPointerTo();
-            default:
-                throw EmitterException(EmitterError::valueTypeNotSupported);
+        case VariableType::Void:
+            return GetVariableType(type);
+        case VariableType::VoidPointer:
+            return GetVariableType(VariableType::Void)->getPointerTo();
+        case VariableType::Byte:
+            return GetVariableType(type);
+        case VariableType::BytePointer:
+            return GetVariableType(VariableType::Byte)->getPointerTo();
+        case VariableType::Short:
+            return GetVariableType(type);
+        case VariableType::ShortPointer:
+            return GetVariableType(VariableType::Short)->getPointerTo();
+        case VariableType::Int32:
+            return GetVariableType(type);
+        case VariableType::Int32Pointer:
+            return GetVariableType(VariableType::Int32)->getPointerTo();
+        case VariableType::Int64:
+            return GetVariableType(type);
+        case VariableType::Int64Pointer:
+            return GetVariableType(VariableType::Int64)->getPointerTo();
+        case VariableType::Float:
+            return GetVariableType(type);
+        case VariableType::FloatPointer:
+            return GetVariableType(VariableType::Float)->getPointerTo();
+        case VariableType::Double:
+            return GetVariableType(type);
+        case VariableType::DoublePointer:
+            return GetVariableType(VariableType::Double)->getPointerTo();
+        case VariableType::Char8:
+            return GetVariableType(type);
+        case VariableType::Char8Pointer:
+            return GetVariableType(VariableType::Char8)->getPointerTo();
+        default:
+            throw EmitterException(EmitterError::valueTypeNotSupported);
         }
+    }
+
+    llvm::PointerType* IREmitter::PointerType(VariableType type)
+    {
+        return Type(type)->getPointerTo();
+    }
+
+    llvm::PointerType* IREmitter::PointerType(llvm::Type* type)
+    {
+        return type->getPointerTo();
     }
 
     llvm::ArrayType* IREmitter::ArrayType(VariableType type, size_t size)
@@ -100,9 +123,19 @@ namespace emitters
         return llvm::ArrayType::get(Type(type), size);
     }
 
+    llvm::ArrayType* IREmitter::ArrayType(llvm::Type* type, size_t size)
+    {
+        return llvm::ArrayType::get(type, size);
+    }
+
     llvm::VectorType* IREmitter::VectorType(VariableType type, size_t size)
     {
         return llvm::VectorType::get(Type(type), size);
+    }
+
+    llvm::VectorType* IREmitter::VectorType(llvm::Type* type, size_t size)
+    {
+        return llvm::VectorType::get(type, size);
     }
 
     llvm::Constant* IREmitter::Literal(const bool value)
@@ -192,18 +225,23 @@ namespace emitters
     {
         switch (type)
         {
-            case VariableType::Byte:
-            case VariableType::Short:
-            case VariableType::Int32:
-            case VariableType::Int64:
-                return Integer(type, 0);
-            case VariableType::Float:
-            case VariableType::Double:
-                return Literal(0.0);
-            default:
-                break;
+        case VariableType::Byte:
+        case VariableType::Short:
+        case VariableType::Int32:
+        case VariableType::Int64:
+            return Integer(type, 0);
+        case VariableType::Float:
+        case VariableType::Double:
+            return Literal(0.0);
+        default:
+            break;
         }
         return nullptr;
+    }
+
+    llvm::Constant* IREmitter::Zero(llvm::Type* type)
+    {
+        return llvm::Constant::getNullValue(type);
     }
 
     llvm::Constant* IREmitter::True()
@@ -224,6 +262,11 @@ namespace emitters
     llvm::Constant* IREmitter::FalseBit()
     {
         return llvm::ConstantInt::getFalse(_llvmContext);
+    }
+
+    llvm::ConstantPointerNull* IREmitter::NullPointer(llvm::PointerType* pointerType)
+    {
+        return llvm::ConstantPointerNull::get(pointerType);
     }
 
     //
@@ -292,7 +335,6 @@ namespace emitters
         return CastIntToFloat(pValue, VariableType::Double, true);
     }
 
-    // int64_t -> ?
     template <>
     llvm::Value* IREmitter::CastValue<int64_t, bool>(llvm::Value* pValue)
     {
@@ -385,10 +427,67 @@ namespace emitters
         return _irBuilder.CreateFPCast(pValue, Type(VariableType::Double));
     }
 
-    llvm::Value* IREmitter::Cast(llvm::Value* pValue, VariableType destinationType)
+    llvm::Value* IREmitter::BitCast(llvm::Value* pValue, VariableType destinationType)
     {
         assert(pValue != nullptr);
-        return _irBuilder.CreateBitCast(pValue, Type(destinationType));
+        return BitCast(pValue, Type(destinationType));
+    }
+
+    llvm::Value* IREmitter::BitCast(llvm::Value* pValue, llvm::Type* destinationType)
+    {
+        assert(pValue != nullptr);
+        auto valueType = pValue->getType();
+
+        // We can't do a bit cast if the types don't have the same size
+        if (!llvm::CastInst::isBitCastable(valueType, destinationType))
+        {
+            auto currentBlock = _irBuilder.GetInsertBlock();
+            assert(currentBlock);
+            auto dataLayout = currentBlock->getModule()->getDataLayout();
+            auto size1 = dataLayout.getTypeStoreSizeInBits(valueType);
+            auto size2 = dataLayout.getTypeStoreSizeInBits(destinationType);
+            if (size1 != 0 && size2 != 0)
+            {
+                // unequal sizes: need to bitcast to an int, truncate, then bitcast to destination type
+                auto intType1 = llvm::Type::getIntNTy(_llvmContext, size1);
+                auto intType2 = llvm::Type::getIntNTy(_llvmContext, size2);
+
+                auto intValue1 = _irBuilder.CreateBitOrPointerCast(pValue, intType1);
+                auto resizedIntValue = _irBuilder.CreateZExtOrTrunc(intValue1, intType2);
+                return _irBuilder.CreateBitOrPointerCast(resizedIntValue, destinationType);
+            }
+            else
+            {
+                throw EmitterException(EmitterError::castNotSupported, "Bad cast");
+            }
+        }
+        else
+        {
+            return _irBuilder.CreateBitOrPointerCast(pValue, destinationType);
+        }
+    }
+
+    llvm::Value* IREmitter::CastPointer(llvm::Value* pValue, llvm::Type* destinationType)
+    {
+        assert(pValue != nullptr);
+        return _irBuilder.CreatePointerCast(pValue, destinationType);
+    }
+
+    llvm::Value* IREmitter::CastPointer(llvm::Value* pValue, VariableType destinationType)
+    {
+        return CastPointer(pValue, Type(destinationType));
+    }
+
+    llvm::Value* IREmitter::CastIntToPointer(llvm::Value* pValue, llvm::Type* destinationType)
+    {
+        assert(pValue != nullptr);
+        return _irBuilder.CreateIntToPtr(pValue, destinationType);
+    }
+
+    llvm::Value* IREmitter::CastPointerToInt(llvm::Value* pValue, llvm::Type* destinationType)
+    {
+        assert(pValue != nullptr);
+        return _irBuilder.CreatePtrToInt(pValue, destinationType);
     }
 
     llvm::Value* IREmitter::CastIntToFloat(llvm::Value* pValue, VariableType destinationType, bool isSigned)
@@ -404,36 +503,36 @@ namespace emitters
         }
     }
 
-    llvm::Value* IREmitter::CastFloatToInt(llvm::Value* pValue, VariableType destinationType)
+    llvm::Value* IREmitter::CastFloatToInt(llvm::Value* pValue, VariableType destinationType, bool isSigned)
     {
         assert(pValue != nullptr);
 
         auto type = Type(destinationType);
-        switch (destinationType)
+        if (!type->isIntegerTy())
         {
-            case VariableType::Byte:
-                return _irBuilder.CreateFPToUI(pValue, type);
+            throw EmitterException(EmitterError::notSupported);
+        }
 
-            case VariableType::Short:
-            case VariableType::Int32:
-            case VariableType::Int64:
-                return _irBuilder.CreateFPToSI(pValue, type);
-
-            default:
-                throw EmitterException(EmitterError::notSupported);
+        if (isSigned)
+        {
+            return _irBuilder.CreateFPToSI(pValue, type);
+        }
+        else
+        {
+            return _irBuilder.CreateFPToUI(pValue, type);
         }
     }
 
-    llvm::Value* IREmitter::CastInt(llvm::Value* pValue, VariableType destinationType, bool isValueSigned)
+    llvm::Value* IREmitter::CastInt(llvm::Value* pValue, VariableType destinationType, bool isSigned)
     {
         assert(pValue != nullptr);
         auto type = Type(destinationType);
-        return _irBuilder.CreateIntCast(pValue, type, isValueSigned);
+        return _irBuilder.CreateIntCast(pValue, type, isSigned);
     }
 
     llvm::Value* IREmitter::CastBool(llvm::Value* pValue)
     {
-        return Cast(pValue, VariableType::Byte);
+        return CastInt(pValue, VariableType::Byte, false);
     }
 
     llvm::ReturnInst* IREmitter::ReturnVoid()
@@ -451,8 +550,21 @@ namespace emitters
     }
 
     //
-    // Operations / Comparisons
+    // Native LLVM operations / comparisons
     //
+    llvm::Value* IREmitter::UnaryOperation(const UnaryOperationType type, llvm::Value* value, const std::string& variableName)
+    {
+        assert(value != nullptr);
+
+        switch (type)
+        {
+        case UnaryOperationType::logicalNot:
+            return _irBuilder.CreateNot(value, variableName);
+        default:
+            throw EmitterException(EmitterError::operatorTypeNotSupported, "Unsupported unary operator");
+        }
+    }
+
     llvm::Value* IREmitter::BinaryOperation(const TypedOperator type, llvm::Value* pLeftValue, llvm::Value* pRightValue, const std::string& variableName)
     {
         assert(pLeftValue != nullptr);
@@ -460,38 +572,38 @@ namespace emitters
 
         switch (type)
         {
-            case TypedOperator::add:
-                return _irBuilder.CreateAdd(pLeftValue, pRightValue, variableName);
-            case TypedOperator::subtract:
-                return _irBuilder.CreateSub(pLeftValue, pRightValue, variableName);
-            case TypedOperator::multiply:
-                return _irBuilder.CreateMul(pLeftValue, pRightValue, variableName);
-            case TypedOperator::divideSigned:
-                return _irBuilder.CreateSDiv(pLeftValue, pRightValue, variableName);
-            case TypedOperator::moduloSigned:
-                return _irBuilder.CreateSRem(pLeftValue, pRightValue, variableName);
-            case TypedOperator::addFloat:
-                return _irBuilder.CreateFAdd(pLeftValue, pRightValue, variableName);
-            case TypedOperator::subtractFloat:
-                return _irBuilder.CreateFSub(pLeftValue, pRightValue, variableName);
-            case TypedOperator::multiplyFloat:
-                return _irBuilder.CreateFMul(pLeftValue, pRightValue, variableName);
-            case TypedOperator::divideFloat:
-                return _irBuilder.CreateFDiv(pLeftValue, pRightValue, variableName);
-            case TypedOperator::logicalAnd:
-                return _irBuilder.CreateAnd(pLeftValue, pRightValue, variableName);
-            case TypedOperator::logicalOr:
-                return _irBuilder.CreateOr(pLeftValue, pRightValue, variableName);
-            case TypedOperator::logicalXor:
-                return _irBuilder.CreateXor(pLeftValue, pRightValue, variableName);
-            case TypedOperator::shiftLeft:
-                return _irBuilder.CreateShl(pLeftValue, pRightValue, variableName);
-            case TypedOperator::logicalShiftRight:
-                return _irBuilder.CreateLShr(pLeftValue, pRightValue, variableName);
-            case TypedOperator::arithmeticShiftRight:
-                return _irBuilder.CreateAShr(pLeftValue, pRightValue, variableName);
-            default:
-                throw EmitterException(EmitterError::operatorTypeNotSupported);
+        case TypedOperator::add:
+            return _irBuilder.CreateAdd(pLeftValue, pRightValue, variableName);
+        case TypedOperator::subtract:
+            return _irBuilder.CreateSub(pLeftValue, pRightValue, variableName);
+        case TypedOperator::multiply:
+            return _irBuilder.CreateMul(pLeftValue, pRightValue, variableName);
+        case TypedOperator::divideSigned:
+            return _irBuilder.CreateSDiv(pLeftValue, pRightValue, variableName);
+        case TypedOperator::moduloSigned:
+            return _irBuilder.CreateSRem(pLeftValue, pRightValue, variableName);
+        case TypedOperator::addFloat:
+            return _irBuilder.CreateFAdd(pLeftValue, pRightValue, variableName);
+        case TypedOperator::subtractFloat:
+            return _irBuilder.CreateFSub(pLeftValue, pRightValue, variableName);
+        case TypedOperator::multiplyFloat:
+            return _irBuilder.CreateFMul(pLeftValue, pRightValue, variableName);
+        case TypedOperator::divideFloat:
+            return _irBuilder.CreateFDiv(pLeftValue, pRightValue, variableName);
+        case TypedOperator::logicalAnd:
+            return _irBuilder.CreateAnd(pLeftValue, pRightValue, variableName);
+        case TypedOperator::logicalOr:
+            return _irBuilder.CreateOr(pLeftValue, pRightValue, variableName);
+        case TypedOperator::logicalXor:
+            return _irBuilder.CreateXor(pLeftValue, pRightValue, variableName);
+        case TypedOperator::shiftLeft:
+            return _irBuilder.CreateShl(pLeftValue, pRightValue, variableName);
+        case TypedOperator::logicalShiftRight:
+            return _irBuilder.CreateLShr(pLeftValue, pRightValue, variableName);
+        case TypedOperator::arithmeticShiftRight:
+            return _irBuilder.CreateAShr(pLeftValue, pRightValue, variableName);
+        default:
+            throw EmitterException(EmitterError::operatorTypeNotSupported);
         }
     }
 
@@ -502,32 +614,32 @@ namespace emitters
 
         switch (type)
         {
-            case TypedComparison::equals:
-                return _irBuilder.CreateICmpEQ(pLeftValue, pRightValue);
-            case TypedComparison::lessThan:
-                return _irBuilder.CreateICmpSLT(pLeftValue, pRightValue);
-            case TypedComparison::lessThanOrEquals:
-                return _irBuilder.CreateICmpSLE(pLeftValue, pRightValue);
-            case TypedComparison::greaterThan:
-                return _irBuilder.CreateICmpSGT(pLeftValue, pRightValue);
-            case TypedComparison::greaterThanOrEquals:
-                return _irBuilder.CreateICmpSGE(pLeftValue, pRightValue);
-            case TypedComparison::notEquals:
-                return _irBuilder.CreateICmpNE(pLeftValue, pRightValue);
-            case TypedComparison::equalsFloat:
-                return _irBuilder.CreateFCmpOEQ(pLeftValue, pRightValue);
-            case TypedComparison::lessThanFloat:
-                return _irBuilder.CreateFCmpOLT(pLeftValue, pRightValue);
-            case TypedComparison::lessThanOrEqualsFloat:
-                return _irBuilder.CreateFCmpOLE(pLeftValue, pRightValue);
-            case TypedComparison::greaterThanFloat:
-                return _irBuilder.CreateFCmpOGT(pLeftValue, pRightValue);
-            case TypedComparison::greaterThanOrEqualsFloat:
-                return _irBuilder.CreateFCmpOGE(pLeftValue, pRightValue);
-            case TypedComparison::notEqualsFloat:
-                return _irBuilder.CreateFCmpONE(pLeftValue, pRightValue);
-            default:
-                throw EmitterException(EmitterError::comparisonTypeNotSupported);
+        case TypedComparison::equals:
+            return _irBuilder.CreateICmpEQ(pLeftValue, pRightValue);
+        case TypedComparison::lessThan:
+            return _irBuilder.CreateICmpSLT(pLeftValue, pRightValue);
+        case TypedComparison::lessThanOrEquals:
+            return _irBuilder.CreateICmpSLE(pLeftValue, pRightValue);
+        case TypedComparison::greaterThan:
+            return _irBuilder.CreateICmpSGT(pLeftValue, pRightValue);
+        case TypedComparison::greaterThanOrEquals:
+            return _irBuilder.CreateICmpSGE(pLeftValue, pRightValue);
+        case TypedComparison::notEquals:
+            return _irBuilder.CreateICmpNE(pLeftValue, pRightValue);
+        case TypedComparison::equalsFloat:
+            return _irBuilder.CreateFCmpOEQ(pLeftValue, pRightValue);
+        case TypedComparison::lessThanFloat:
+            return _irBuilder.CreateFCmpOLT(pLeftValue, pRightValue);
+        case TypedComparison::lessThanOrEqualsFloat:
+            return _irBuilder.CreateFCmpOLE(pLeftValue, pRightValue);
+        case TypedComparison::greaterThanFloat:
+            return _irBuilder.CreateFCmpOGT(pLeftValue, pRightValue);
+        case TypedComparison::greaterThanOrEqualsFloat:
+            return _irBuilder.CreateFCmpOGE(pLeftValue, pRightValue);
+        case TypedComparison::notEqualsFloat:
+            return _irBuilder.CreateFCmpONE(pLeftValue, pRightValue);
+        default:
+            throw EmitterException(EmitterError::comparisonTypeNotSupported);
         }
     }
 
@@ -537,14 +649,10 @@ namespace emitters
 
         llvm::Value* pTestValue = pValue;
         auto pValueType = pValue->getType();
-        if (pValueType->isIntegerTy(1))
+        if (pValueType->isIntegerTy())
         {
             // We use bytes as booleans
             pTestValue = CastInt(pValue, VariableType::Byte, false);
-        }
-        else if (!pValueType->isIntegerTy(4))
-        {
-            pTestValue = CastBool(pValue);
         }
         return Comparison(TypedComparison::equals, pTestValue, testValue ? True() : False());
     }
@@ -562,9 +670,9 @@ namespace emitters
     }
 
     //
-    // AddModule
+    // CreateModule
     //
-    std::unique_ptr<llvm::Module> IREmitter::AddModule(const std::string& name)
+    std::unique_ptr<llvm::Module> IREmitter::CreateModule(const std::string& name)
     {
         return std::make_unique<llvm::Module>(name, _llvmContext);
     }
@@ -572,26 +680,40 @@ namespace emitters
     //
     // Functions
     //
-    llvm::Function* IREmitter::DeclareFunction(llvm::Module* pModule, const std::string& name, VariableType returnType, const ValueTypeList* pArguments)
+    llvm::Function* IREmitter::DeclareFunction(llvm::Module* pModule, const std::string& name)
     {
-        // ??? Why doesn't this use getOrInsertFunction?
-        return Function(pModule, name, returnType, llvm::Function::LinkageTypes::ExternalLinkage, pArguments);
+        assert(pModule != nullptr);
+        auto functionType = llvm::FunctionType::get(_irBuilder.getVoidTy(), false);
+        return DeclareFunction(pModule, name, functionType);
+    }
+
+    llvm::Function* IREmitter::DeclareFunction(llvm::Module* pModule, const std::string& name, VariableType returnType)
+    {
+        auto functionType = llvm::FunctionType::get(Type(returnType), false);
+        return DeclareFunction(pModule, name, functionType);
+    }
+
+    llvm::Function* IREmitter::DeclareFunction(llvm::Module* pModule, const std::string& name, VariableType returnType, const VariableTypeList& arguments)
+    {
+        auto types = GetLLVMTypes(arguments);
+        auto functionType = llvm::FunctionType::get(Type(returnType), types, false);
+        return DeclareFunction(pModule, name, functionType);
     }
 
     llvm::Function* IREmitter::DeclareFunction(llvm::Module* pModule, const std::string& name, VariableType returnType, const NamedVariableTypeList& arguments)
     {
-        // ??? Why doesn't this use getOrInsertFunction?
-        return Function(pModule, name, returnType, llvm::Function::LinkageTypes::ExternalLinkage, arguments);
+        auto types = BindArgumentTypes(arguments);
+        auto functionType = llvm::FunctionType::get(Type(returnType), types, false);
+        return DeclareFunction(pModule, name, functionType);
     }
 
     llvm::Function* IREmitter::DeclareFunction(llvm::Module* pModule, const std::string& name, llvm::FunctionType* type)
     {
         assert(pModule != nullptr);
-
         return static_cast<llvm::Function*>(pModule->getOrInsertFunction(name, type));
     }
 
-    llvm::Function* IREmitter::Function(llvm::Module* pModule, const std::string& name, VariableType returnType, llvm::Function::LinkageTypes linkage, const ValueTypeList* pArguments)
+    llvm::Function* IREmitter::Function(llvm::Module* pModule, const std::string& name, VariableType returnType, llvm::Function::LinkageTypes linkage, const VariableTypeList* pArguments)
     {
         assert(pModule != nullptr);
 
@@ -619,12 +741,32 @@ namespace emitters
         return pFunction;
     }
 
+    llvm::Function* IREmitter::Function(llvm::Module* pModule, const std::string& name, llvm::Type* returnType, llvm::Function::LinkageTypes linkage, const NamedVariableTypeList& arguments)
+    {
+        assert(pModule != nullptr);
+
+        auto types = BindArgumentTypes(arguments);
+        llvm::Function* pFunction = Function(pModule, name, returnType, linkage, types);
+        BindArgumentNames(pFunction, arguments);
+        return pFunction;
+    }
+
     llvm::Function* IREmitter::Function(llvm::Module* pModule, const std::string& name, llvm::Type* returnType, llvm::Function::LinkageTypes linkage, const std::vector<llvm::Type*>& argTypes)
     {
         assert(pModule != nullptr);
 
         auto functionType = llvm::FunctionType::get(returnType, argTypes, false);
         return CreateFunction(pModule, name, linkage, functionType);
+    }
+
+    llvm::Function* IREmitter::Function(llvm::Module* pModule, const std::string& name, llvm::Type* returnType, llvm::Function::LinkageTypes linkage, const NamedLLVMTypeList& arguments)
+    {
+        assert(pModule != nullptr);
+
+        auto types = BindArgumentTypes(arguments);
+        llvm::Function* pFunction = Function(pModule, name, returnType, linkage, types);
+        BindArgumentNames(pFunction, arguments);
+        return pFunction;
     }
 
     //
@@ -744,11 +886,17 @@ namespace emitters
         return _irBuilder.CreateMemSet(pDestination, value, size, 0, true);
     }
 
-    llvm::Function* IREmitter::GetIntrinsic(llvm::Module* pModule, llvm::Intrinsic::ID id, const ValueTypeList& arguments)
+    llvm::Function* IREmitter::GetIntrinsic(llvm::Module* pModule, llvm::Intrinsic::ID id, const VariableTypeList& arguments)
     {
         assert(pModule != nullptr);
         auto types = GetLLVMTypes(arguments);
         return llvm::Intrinsic::getDeclaration(pModule, id, types);
+    }
+
+    llvm::Function* IREmitter::GetIntrinsic(llvm::Module* pModule, llvm::Intrinsic::ID id, const LLVMTypeList& arguments)
+    {
+        assert(pModule != nullptr);
+        return llvm::Intrinsic::getDeclaration(pModule, id, arguments);
     }
 
     llvm::PHINode* IREmitter::Phi(VariableType type, llvm::Value* pLeftValue, llvm::BasicBlock* pLeftBlock, llvm::Value* pRightValue, llvm::BasicBlock* pRightBlock)
@@ -777,7 +925,8 @@ namespace emitters
         llvm::Value* derefArguments[1]{
             Zero()
         };
-        return _irBuilder.CreateGEP(pArray->getValueType(), pArray, derefArguments);
+
+        return _irBuilder.CreateGEP(pArray, derefArguments);
     }
 
     llvm::Value* IREmitter::PointerOffset(llvm::GlobalVariable* pArray, llvm::Value* pOffset)
@@ -789,9 +938,11 @@ namespace emitters
             Zero(),
             pOffset
         };
-        return _irBuilder.CreateGEP(pArray->getValueType(), pArray, derefArguments);
+
+        return _irBuilder.CreateGEP(pArray, derefArguments);
     }
 
+    // TODO: rename this to avoid clashes with other PointerOffset()
     llvm::Value* IREmitter::PointerOffset(llvm::GlobalVariable* pArray, llvm::Value* pOffset, llvm::Value* pFieldOffset)
     {
         assert(pArray != nullptr);
@@ -819,6 +970,20 @@ namespace emitters
         return _irBuilder.CreateInBoundsGEP(pArray, derefArguments);
     }
 
+    llvm::Value* IREmitter::GetStructFieldPointer(llvm::Value* structPtr, size_t fieldIndex)
+    {
+        auto structPtrType = llvm::dyn_cast<llvm::PointerType>(structPtr->getType());
+        assert(structPtrType && "Error: must pass pointer to GetStructFieldPointer");
+        assert(structPtrType->getElementType()->isStructTy() && "Error: must pass pointer to a struct type to GetStructFieldPointer");
+        return _irBuilder.CreateStructGEP(structPtrType->getElementType(), structPtr, fieldIndex);
+    }
+
+    llvm::Value* IREmitter::ExtractStructField(llvm::Value* structValue, size_t fieldIndex)
+    {
+        assert(structValue->getType()->isStructTy() && "Error: must pass a struct type to ExtractStructField");
+        return _irBuilder.CreateExtractValue(structValue, {static_cast<unsigned int>(fieldIndex)});
+    }
+
     llvm::LoadInst* IREmitter::Load(llvm::Value* pPointer)
     {
         assert(pPointer != nullptr);
@@ -843,6 +1008,11 @@ namespace emitters
         return _irBuilder.CreateAlloca(Type(type), nullptr);
     }
 
+    llvm::AllocaInst* IREmitter::StackAllocate(llvm::Type* type)
+    {
+        return _irBuilder.CreateAlloca(type, nullptr);
+    }
+
     llvm::AllocaInst* IREmitter::StackAllocate(VariableType type, const std::string& name)
     {
         return _irBuilder.CreateAlloca(Type(type), nullptr, name);
@@ -855,9 +1025,14 @@ namespace emitters
         return _irBuilder.CreateAlloca(pType, nullptr, name);
     }
 
-    llvm::AllocaInst* IREmitter::StackAllocate(VariableType type, int size)
+    llvm::AllocaInst* IREmitter::StackAllocate(VariableType type, size_t size)
     {
-        return _irBuilder.CreateAlloca(Type(type), Literal(size));
+        return _irBuilder.CreateAlloca(Type(type), Literal(static_cast<int>(size)));
+    }
+
+    llvm::AllocaInst* IREmitter::StackAllocate(llvm::Type* type, size_t size)
+    {
+        return _irBuilder.CreateAlloca(type, Literal(static_cast<int>(size)));
     }
 
     llvm::BranchInst* IREmitter::Branch(llvm::Value* pConditionValue, llvm::BasicBlock* pThenBlock, llvm::BasicBlock* pElseBlock)
@@ -876,35 +1051,78 @@ namespace emitters
         return _irBuilder.CreateBr(pDestination);
     }
 
-    llvm::StructType* IREmitter::Struct(const std::string& name, const ValueTypeList& fields)
+    llvm::StructType* IREmitter::DeclareStruct(const std::string& name, const VariableTypeList& fields)
     {
-        // TODO: Look up in table first
-        auto types = GetLLVMTypes(fields);
-        return llvm::StructType::create(_llvmContext, types, name);
+        llvm::StructType* type = GetStruct(name);
+        if (type != nullptr)
+        {
+            throw EmitterException(EmitterError::duplicateSymbol);
+        }
+        LLVMTypeList llvmFields;
+        for (const auto& field : fields)
+        {
+            llvmFields.push_back(Type(field));
+        }
+        return DeclareStruct(name, llvmFields);
+    }
+
+    llvm::StructType* IREmitter::DeclareStruct(const std::string& name, const LLVMTypeList& fields)
+    {
+        llvm::StructType* type = GetStruct(name);
+        if (type != nullptr)
+        {
+            throw EmitterException(EmitterError::duplicateSymbol);
+        }
+        auto structType = llvm::StructType::create(_llvmContext, fields, name);
+        _structs[name] = structType;
+        return structType;
+    }
+
+    llvm::StructType* IREmitter::DeclareStruct(const std::string& name, const NamedVariableTypeList& fields)
+    {
+        llvm::StructType* type = GetStruct(name);
+        if (type != nullptr)
+        {
+            throw EmitterException(EmitterError::duplicateSymbol);
+        }
+        auto types = BindArgumentTypes(fields);
+        auto structType = llvm::StructType::create(_llvmContext, types, name);
+        _structs[name] = structType;
+        return structType;
+    }
+
+    llvm::StructType* IREmitter::GetAnonymousStructType(const LLVMTypeList& fields, bool packed)
+    {
+        return llvm::StructType::get(_llvmContext, fields, packed);
+    }
+
+    llvm::StructType* IREmitter::GetStruct(const std::string& name)
+    {
+        return _structs[name];
     }
 
     llvm::Type* IREmitter::GetVariableType(VariableType type)
     {
         switch (type)
         {
-            case VariableType::Void:
-                return _irBuilder.getVoidTy();
-            case VariableType::Byte:
-                return _irBuilder.getInt8Ty();
-            case VariableType::Short:
-                return _irBuilder.getInt16Ty();
-            case VariableType::Int32:
-                return _irBuilder.getInt32Ty();
-            case VariableType::Int64:
-                return _irBuilder.getInt64Ty();
-            case VariableType::Float:
-                return _irBuilder.getFloatTy();
-            case VariableType::Double:
-                return _irBuilder.getDoubleTy();
-            case VariableType::Char8:
-                return _irBuilder.getInt8Ty();
-            default:
-                throw EmitterException(EmitterError::valueTypeNotSupported);
+        case VariableType::Void:
+            return _irBuilder.getVoidTy();
+        case VariableType::Byte:
+            return _irBuilder.getInt8Ty();
+        case VariableType::Short:
+            return _irBuilder.getInt16Ty();
+        case VariableType::Int32:
+            return _irBuilder.getInt32Ty();
+        case VariableType::Int64:
+            return _irBuilder.getInt64Ty();
+        case VariableType::Float:
+            return _irBuilder.getFloatTy();
+        case VariableType::Double:
+            return _irBuilder.getDoubleTy();
+        case VariableType::Char8:
+            return _irBuilder.getInt8Ty();
+        default:
+            throw EmitterException(EmitterError::valueTypeNotSupported);
         }
     }
 
@@ -912,23 +1130,23 @@ namespace emitters
     {
         switch (type)
         {
-            // Are these correct for the int types??
-            case VariableType::Byte:
-                return 8;
-            case VariableType::Short:
-                return 16;
-            case VariableType::Int32:
-                return 32;
-            case VariableType::Int64:
-                return 64;
-            case VariableType::Float:
-                return 4;
-            case VariableType::Double:
-                return 8;
-            case VariableType::Char8:
-                return 8;
-            default:
-                throw EmitterException(EmitterError::valueTypeNotSupported);
+        // Are these correct for the int types??
+        case VariableType::Byte:
+            return 8;
+        case VariableType::Short:
+            return 16;
+        case VariableType::Int32:
+            return 32;
+        case VariableType::Int64:
+            return 64;
+        case VariableType::Float:
+            return 4;
+        case VariableType::Double:
+            return 8;
+        case VariableType::Char8:
+            return 8;
+        default:
+            throw EmitterException(EmitterError::valueTypeNotSupported);
         }
     }
 
@@ -937,9 +1155,9 @@ namespace emitters
         return llvm::ConstantInt::get(_llvmContext, llvm::APInt(SizeOf(type), value, true));
     }
 
-    std::vector<llvm::Type*> IREmitter::GetLLVMTypes(const ValueTypeList& types)
+    LLVMTypeList IREmitter::GetLLVMTypes(const VariableTypeList& types)
     {
-        std::vector<llvm::Type*> llvmTypes;
+        LLVMTypeList llvmTypes;
         for (auto t : types)
         {
             llvmTypes.push_back(Type(t));
@@ -950,21 +1168,16 @@ namespace emitters
 
     std::vector<llvm::Type*> IREmitter::BindArgumentTypes(const NamedVariableTypeList& arguments)
     {
-        std::vector<llvm::Type*> types;
-        for (auto argument : arguments)
-        {
-            types.push_back(Type(argument.second));
-        }
+        std::vector<llvm::Type*> types(arguments.size());
+        std::transform(arguments.begin(), arguments.end(), types.begin(), [this](NamedVariableType argument) { return Type(argument.second); });
         return types;
     }
 
-    void IREmitter::BindArgumentNames(llvm::Function* pFunction, const NamedVariableTypeList& arguments)
+    std::vector<llvm::Type*> IREmitter::BindArgumentTypes(const NamedLLVMTypeList& arguments)
     {
-        size_t i = 0;
-        for (auto& argument : pFunction->args())
-        {
-            argument.setName(arguments[i++].first);
-        }
+        std::vector<llvm::Type*> types(arguments.size());
+        std::transform(arguments.begin(), arguments.end(), types.begin(), [](auto argument) { return argument.second; });
+        return types;
     }
 
     llvm::Function* IREmitter::CreateFunction(llvm::Module* pModule, const std::string& name, llvm::Function::LinkageTypes linkage, llvm::FunctionType* pFunctionType)

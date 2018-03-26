@@ -41,13 +41,31 @@ namespace neural
     }
 
     template <typename ElementType>
+    void InputLayer<ElementType>::SetInput(const std::vector<ElementType>& input)
+    {
+        size_t index = 0;
+        auto& inputTensor = _data;
+
+        for (size_t i = 0; i < inputTensor.NumRows(); ++i)
+        {
+            for (size_t j = 0; j < inputTensor.NumColumns(); ++j)
+            {
+                for (size_t k = 0; k < inputTensor.NumChannels(); ++k)
+                {
+                    inputTensor(i, j, k) = static_cast<ElementType>(input[index++]);
+                }
+            }
+        }
+    }
+
+    template <typename ElementType>
     void InputLayer<ElementType>::Compute()
     {
         auto output = GetOutputMinusPadding();
         auto& input = _layerParameters.input;
 
         AssignValues(input, output);
-        math::TensorOperations::Multiply<math::Dimension::channel>(_scale, output);
+        math::ScaleUpdate<math::Dimension::channel>(_scale, output);
     }
 
     template <typename ElementType>

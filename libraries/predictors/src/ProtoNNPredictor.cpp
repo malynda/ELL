@@ -8,6 +8,9 @@
 
 #include "ProtoNNPredictor.h"
 
+// math
+#include "MatrixOperations.h"
+
 // stl
 #include <memory>
 
@@ -34,12 +37,14 @@ namespace predictors
         _gamma = 0.0;
     }
 
-    math::ColumnVector<double> ProtoNNPredictor::GetLabelScores(const DataVectorType& inputVector) const
+    math::ColumnVector<double> ProtoNNPredictor::GetLabelScores(const std::vector<double>& inputVector) const
     {
         // Projection
-        math::ColumnVector<double> data(inputVector.ToArray());
+        math::ColumnVector<double> data(inputVector);
+        auto dimension = GetDimension();
+        data.Resize(dimension);
         math::ColumnVector<double> projectedInput(GetProjectedDimension());
-        math::Operations::Multiply(1.0, _W, data, 0.0, projectedInput);
+        math::MultiplyScaleAddUpdate(1.0, _W, data, 0.0, projectedInput);
 
         // Similarity to each prototype
         auto numPrototypes = GetNumPrototypes();
@@ -58,58 +63,39 @@ namespace predictors
 
         // Get the prediction label
         math::ColumnVector<double> labels(GetNumLabels());
-        math::Operations::Multiply(1.0, GetLabelEmbeddings(), similarityToPrototypes, 0.0, labels);
+        math::MultiplyScaleAddUpdate(1.0, GetLabelEmbeddings(), similarityToPrototypes, 0.0, labels); // TODO due to the zero, there is a more appropriate operation
 
         return labels;
     }
 
-    ProtoNNPrediction ProtoNNPredictor::Predict(const DataVectorType& inputVector) const
+    math::ColumnVector<double> ProtoNNPredictor::Predict(const DataVectorType& inputVector) const
+    {
+        auto labels = GetLabelScores(inputVector.ToArray());
+        return labels;
+    }
+
+    math::ColumnVector<double> ProtoNNPredictor::Predict(const std::vector<double>& inputVector) const
     {
         auto labels = GetLabelScores(inputVector);
-        auto maxElement = std::max_element(labels.GetDataPointer(), labels.GetDataPointer() + labels.Size());
-        auto maxLabelIndex = maxElement - labels.GetDataPointer();
-
-        ProtoNNPrediction prediction{ *maxElement, (size_t)maxLabelIndex };
-
-        return prediction;
+        return labels;
     }
 
     void ProtoNNPredictor::WriteToArchive(utilities::Archiver& archiver) const
     {
         archiver["dim"] << _dimension;
         archiver["gamma"] << _gamma;
-        WriteMatrixToArchive(archiver, "w_rows", "w_columns", "w_data", _W);
-        WriteMatrixToArchive(archiver, "b_rows", "b_columns", "b_data", _B);
-        WriteMatrixToArchive(archiver, "z_rows", "z_columns", "z_data", _Z);
+        math::MatrixArchiver::Write(_W, "w", archiver);
+        math::MatrixArchiver::Write(_B, "b", archiver);
+        math::MatrixArchiver::Write(_Z, "z", archiver);
     }
 
     void ProtoNNPredictor::ReadFromArchive(utilities::Unarchiver& archiver)
     {
         archiver["dim"] >> _dimension;
         archiver["gamma"] >> _gamma;
-        _W = ReadMatrixFromArchive(archiver, "w_rows", "w_columns", "w_data");
-        _B = ReadMatrixFromArchive(archiver, "b_rows", "b_columns", "b_data");
-        _Z = ReadMatrixFromArchive(archiver, "z_rows", "z_columns", "z_data");
-    }
-
-    void ProtoNNPredictor::WriteMatrixToArchive(utilities::Archiver& archiver, std::string rowLabel, std::string colLabel, std::string dataLabel, math::ConstMatrixReference<double, math::MatrixLayout::columnMajor> M)
-    {
-        archiver[rowLabel] << M.NumRows();
-        archiver[colLabel] << M.NumColumns();
-        std::vector<double> temp;
-        temp.assign(M.GetDataPointer(), M.GetDataPointer() + (size_t)(M.NumRows() * M.NumColumns()));
-        archiver[dataLabel] << temp;
-    }
-
-    math::ColumnMatrix<double> ProtoNNPredictor::ReadMatrixFromArchive(utilities::Unarchiver& archiver, std::string rowLabel, std::string colLabel, std::string dataLabel)
-    {
-        size_t w_rows = 0;
-        size_t w_columns = 0;
-        archiver[rowLabel] >> w_rows;
-        archiver[colLabel] >> w_columns;
-        std::vector<double> temp;
-        archiver[dataLabel] >> temp;
-        return math::ColumnMatrix<double>(w_rows, w_columns, temp);
+        math::MatrixArchiver::Read(_W, "w", archiver);
+        math::MatrixArchiver::Read(_B, "b", archiver);
+        math::MatrixArchiver::Read(_Z, "z", archiver);
     }
 }
 }

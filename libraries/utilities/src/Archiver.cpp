@@ -7,21 +7,49 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Archiver.h"
+#include "Exception.h"
 #include "Format.h"
 #include "IArchivable.h"
+#include "Unused.h"
 
+// stl
 #include <string>
 
 namespace ell
 {
 namespace utilities
 {
-    bool operator==(const ArchiveVersion& a, const ArchiveVersion& b)
+    //
+    // SerializationContext
+    //
+
+    GenericTypeFactory& SerializationContext::GetTypeFactory()
     {
-        return a.versionNumber == b.versionNumber;
+        if (_previousContext != nullptr)
+        {
+            return _previousContext->GetTypeFactory();
+        }
+        return _typeFactory;
     }
 
-    bool operator!=(const ArchiveVersion& a, const ArchiveVersion& b)
+    VariantTypeRegistry& SerializationContext::GetVariantTypeRegistry()
+    {
+        if (_previousContext != nullptr)
+        {
+            return _previousContext->GetVariantTypeRegistry();
+        }
+        return _variantTypeRegistry;
+    }
+
+    //
+    // ArchivedObjectInfo
+    //
+    bool operator==(const ArchivedObjectInfo& a, const ArchivedObjectInfo& b)
+    {
+        return (a.type == b.type) && (a.version == b.version);
+    }
+
+    bool operator!=(const ArchivedObjectInfo& a, const ArchivedObjectInfo& b)
     {
         return !(a == b);
     }
@@ -49,16 +77,19 @@ namespace utilities
 
     void Archiver::BeginArchiveObject(const char* name, const IArchivable& value)
     {
+        UNUSED(name, value);
         // nothing
     }
 
     void Archiver::ArchiveObject(const char* name, const IArchivable& value)
     {
+        UNUSED(name);
         value.WriteToArchive(*this);
     }
 
     void Archiver::EndArchiveObject(const char* name, const IArchivable& value)
     {
+        UNUSED(name, value);
         // nothing
     }
 
@@ -92,45 +123,59 @@ namespace utilities
         _contexts.push_back(context);
     }
 
+    ArchivedObjectInfo Unarchiver::GetCurrentObjectInfo() const
+    {
+        return _objectInfo.back();
+    }
+
     void Unarchiver::UnarchiveValue(const char* name, IArchivable& value)
     {
         auto objInfo = BeginUnarchiveObject(name, GetArchivedTypeName(value));
-        // Check for matching version
-        if (objInfo.version != value.GetArchiveVersion())
+        _objectInfo.push_back(objInfo);
+
+        if (!value.CanReadArchiveVersion(objInfo.version))
         {
             throw InputException(InputExceptionErrors::versionMismatch, "Attempting to read incompatible version");
         }
         auto typeName = objInfo.type;
         UnarchiveObject(name, value);
         EndUnarchiveObject(name, typeName);
+
+        _objectInfo.pop_back();
     }
 
     ArchivedObjectInfo Unarchiver::BeginUnarchiveObject(const char* name, const std::string& typeName)
     {
+        UNUSED(name);
         return { typeName, 0 };
     }
 
     void Unarchiver::UnarchiveObject(const char* name, IArchivable& value)
     {
+        UNUSED(name);
         value.ReadFromArchive(*this);
     }
 
     void Unarchiver::UnarchiveObjectAsPrimitive(const char* name, IArchivable& value)
     {
+        UNUSED(name);
         // ### Likely wrong
         value.ReadFromArchive(*this);
     }
 
     void Unarchiver::EndUnarchiveObject(const char* name, const std::string& typeName)
     {
+        UNUSED(name, typeName);
     }
 
     void Unarchiver::BeginUnarchiveArray(const char* name, const std::string& typeName)
     {
+        UNUSED(name, typeName);
     }
 
     void Unarchiver::EndUnarchiveArray(const char* name, const std::string& typeName)
     {
+        UNUSED(name, typeName);
     }
 }
 }

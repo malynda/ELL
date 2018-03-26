@@ -8,13 +8,20 @@
 
 #pragma once
 
-#include "IRBlockRegion.h"
-#include "IREmitter.h"
+#include "EmitterTypes.h"
+
+// llvm
+#include <llvm/IR/BasicBlock.h>
+#include <llvm/IR/Value.h>
+
+// stl
+#include <functional>
 
 namespace ell
 {
 namespace emitters
 {
+    class IRBlockRegion;
     class IRFunctionEmitter;
 
     ///<summary>Class that helps with emitting If, Then, Else blocks.</summary>
@@ -40,6 +47,32 @@ namespace emitters
         /// <param name="pValue"> Pointer to the llvm::Value that contains the value used to define the comparison. </param>
         /// <param name="pTestValue"> Pointer to the llvm::Value that contains the test value, which is compared against pValue. </param>
         IRIfEmitter(IRFunctionEmitter& functionEmitter, TypedComparison comparison, llvm::Value* pValue, llvm::Value* pTestValue);
+
+        IRIfEmitter(const IRIfEmitter&) = delete;
+        IRIfEmitter& operator=(const IRIfEmitter&) = delete;
+
+        /// <summary> Move constructor </summary>
+        IRIfEmitter(IRIfEmitter&& other);
+
+        /// <summary> Move assignment operator </summary>
+        IRIfEmitter& operator=(IRIfEmitter&& other);
+
+        /// <summary> Destructor </summary>
+        ~IRIfEmitter();
+
+        /// <summary> Type alias for if-else body lambda. </summary>
+        using IfElseBodyFunction = std::function<void(IRFunctionEmitter& function)>;
+
+        /// <summary> Emits an 'else' block. </summary>
+        ///
+        /// <param name="body"> A function that emits the body of the "if true" block. </param>
+        IRIfEmitter& Else(IfElseBodyFunction body);
+
+        /// <summary> Emits an 'else if' block. </summary>
+        ///
+        /// <param name="pValue"> Pointer to the llvm::Value that contains the boolean condition value. </param>
+        /// <param name="body"> A function that emits the body of the "if true" block. </param>
+        IRIfEmitter& ElseIf(llvm::Value* pValue, IfElseBodyFunction body);
 
         /// <summary>
         /// Emit a comparison of pValue to pTestValue and a branch to the "Then" block. Makes the Then
@@ -121,6 +154,11 @@ namespace emitters
         llvm::BasicBlock* IfThenElse(TypedComparison comparison, llvm::Value* pValue, llvm::Value* pTestValue, IRBlockRegion* pThenRegion, IRBlockRegion* pElseRegion);
 
     private:
+        friend IRFunctionEmitter;
+
+        // Private constructor for new lambda-based IRFunctionEmitter::If() method
+        IRIfEmitter(IRFunctionEmitter& functionEmitter, bool endOnDestruct, llvm::BasicBlock* pPrevBlock = nullptr);
+
         void IfThen(TypedComparison comparison, llvm::Value* pValue, llvm::Value* pTestValue);
         void IfThen(llvm::Value* pValue);
         void PrepareBlocks();
@@ -129,11 +167,12 @@ namespace emitters
         void EndPrev();
 
         llvm::BasicBlock* GetParentBlock();
-        IRFunctionEmitter& _functionEmitter; // Function we are emitting into
+        IRFunctionEmitter* _functionEmitter = nullptr; // Function we are emitting into
         llvm::BasicBlock* _pConditionBlock = nullptr; // Block into which the conditional instructions are emitted -- the "if"
         llvm::BasicBlock* _pThenBlock = nullptr; // Block into which the "Then" instructions are being emitted
         llvm::BasicBlock* _pEndBlock = nullptr; // The end block.
         llvm::BasicBlock* _pAfterBlock = nullptr; // Block where code subsequent to the "if, else" will be emitted. The end block always branches here
+        bool _endOnDestruct = false;
     };
 }
 }

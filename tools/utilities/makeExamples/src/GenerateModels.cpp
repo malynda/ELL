@@ -13,17 +13,16 @@
 
 // nodes
 #include "BinaryOperationNode.h"
+#include "BroadcastFunctionNode.h"
 #include "ConstantNode.h"
 #include "DelayNode.h"
 #include "DotProductNode.h"
 #include "ExtremalValueNode.h"
 #include "ForestPredictorNode.h"
-#include "L2NormNode.h"
+#include "L2NormSquaredNode.h"
 #include "LinearPredictorNode.h"
 #include "MovingAverageNode.h"
 #include "MovingVarianceNode.h"
-#include "SinkNode.h"
-#include "SourceNode.h"
 
 // predictors
 #include "ForestPredictor.h"
@@ -51,6 +50,18 @@ model::Model GenerateTimesTwoModel(size_t dimension)
     auto constantTwoNode = model.AddNode<nodes::ConstantNode<double>>(std::vector<double>(dimension, 2.0));
     auto timesNode = model.AddNode<nodes::BinaryOperationNode<double>>(inputNode->output, constantTwoNode->output, emitters::BinaryOperationType::coordinatewiseMultiply);
     model.AddNode<model::OutputNode<double>>(timesNode->output);
+    return model;
+}
+
+template <typename ElementType>
+model::Model GenerateBroadcastTimesTwoModel(size_t dimension)
+{
+    model::Model model;
+    auto inputNode = model.AddNode<model::InputNode<ElementType>>(dimension);
+    auto constantTwoNode = model.AddNode<nodes::ConstantNode<ElementType>>(std::vector<ElementType>(1, 2.0));
+    model::PortMemoryLayout layout({static_cast<int>(dimension), 1});
+    auto timesNode = model.AddNode<nodes::BroadcastLinearFunctionNode<ElementType>>(inputNode->output, layout, constantTwoNode->output, model::PortElements<ElementType>{}, 1, layout);
+    model.AddNode<model::OutputNode<ElementType>>(timesNode->output);
     return model;
 }
 
@@ -98,13 +109,13 @@ model::Model GenerateModel1()
 
     // classifier
     auto inputs = model::Concat(model::MakePortElements(mean8->output), model::MakePortElements(var8->output), model::MakePortElements(mean16->output), model::MakePortElements(var16->output));
-    predictors::LinearPredictor predictor(inputs.Size());
+    predictors::LinearPredictor<double> predictor(inputs.Size());
     // Set some values into the predictor's vector
     for (size_t index = 0; index < inputs.Size(); ++index)
     {
         predictor.GetWeights()[index] = (double)(index % 5);
     }
-    model.AddNode<nodes::LinearPredictorNode>(inputs, predictor);
+    model.AddNode<nodes::LinearPredictorNode<double>>(inputs, predictor);
     return model;
 }
 
@@ -116,10 +127,10 @@ model::Model GenerateModel2()
 
     // one "leg"
     auto mean1 = model.AddNode<nodes::MovingAverageNode<double>>(inputNode->output, 8);
-    auto mag1 = model.AddNode<nodes::L2NormNode<double>>(mean1->output);
+    auto mag1 = model.AddNode<nodes::L2NormSquaredNode<double>>(mean1->output);
 
     // other "leg"
-    auto mag2 = model.AddNode<nodes::L2NormNode<double>>(inputNode->output);
+    auto mag2 = model.AddNode<nodes::L2NormSquaredNode<double>>(inputNode->output);
     auto mean2 = model.AddNode<nodes::MovingAverageNode<double>>(mag2->output, 8);
 
     // combine them
@@ -188,30 +199,13 @@ model::Model GenerateRefinedTreeModel(size_t numSplits)
     return refinedModel;
 }
 
-template <typename ValueType>
-bool SourceNode_EmptyCallback(std::vector<ValueType>&)
-{
-    return false;
-}
-model::SteppableMap<std::chrono::steady_clock> GenerateSteppableMap(size_t dimension, int intervalMs)
-{
-    constexpr size_t timeSignalDimension = 2;
+// explicit instantiations
+template 
+model::Model GenerateBroadcastTimesTwoModel<int>(size_t dimension);
 
-    std::ostringstream dataCallbackName;
-    dataCallbackName << "SteppableMap_" << dimension << "_" << intervalMs << "_DataCallback";
+template 
+model::Model GenerateBroadcastTimesTwoModel<float>(size_t dimension);
 
-    std::ostringstream resultsCallbackName;
-    resultsCallbackName << "SteppableMap_" << dimension << "_" << intervalMs << "_ResultsCallback";
-
-    model::Model model;
-    auto inputNode = model.AddNode<model::InputNode<model::TimeTickType>>(timeSignalDimension);
-    auto sourceNode = model.AddNode<nodes::SourceNode<double, &SourceNode_EmptyCallback<double>>>(inputNode->output, dimension, dataCallbackName.str());
-    auto constantTwoNode = model.AddNode<nodes::ConstantNode<double>>(std::vector<double>(dimension, 2.0));
-    auto timesNode = model.AddNode<nodes::BinaryOperationNode<double>>(sourceNode->output, constantTwoNode->output, emitters::BinaryOperationType::coordinatewiseMultiply);
-    auto sinkNode = model.AddNode<nodes::SinkNode<double>>(timesNode->output, [](const std::vector<double>&) {}, resultsCallbackName.str());
-    auto outputNode = model.AddNode<model::OutputNode<double>>(sinkNode->output);
-
-    auto map = model::SteppableMap<std::chrono::steady_clock>(model, { { "input", inputNode } }, { { "output", outputNode->output } }, model::DurationType(intervalMs));
-    return map;
-}
+template 
+model::Model GenerateBroadcastTimesTwoModel<double>(size_t dimension);
 }

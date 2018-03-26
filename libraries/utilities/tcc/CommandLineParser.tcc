@@ -8,6 +8,7 @@
 
 // utilities
 #include "Exception.h"
+#include "StringUtil.h"
 
 // stl
 #include <sstream>
@@ -30,7 +31,7 @@ namespace utilities
     template <typename T, typename U>
     void CommandLineParser::AddOption(T& option, std::string name, std::string shortName, std::string description, const U& defaultValue, std::string emptyValueString)
     {
-        auto callback = [&option, this](std::string optionVal) {
+        auto callback = [&option](std::string optionVal) {
             bool didParse = ParseVal<T>(optionVal, option);
             return didParse;
         };
@@ -86,8 +87,9 @@ namespace utilities
         for (const auto& valNamePair : valNames)
         {
             // Exact match
-            if(valNamePair.first == str)
+            if (valNamePair.first == str)
             {
+                resultString = valNamePair.first;
                 result = valNamePair.second;
                 return true;
             }
@@ -121,7 +123,8 @@ namespace utilities
     template <>
     inline bool CommandLineParser::ParseVal<bool>(std::string val, bool& result)
     {
-        result = (val[0] == 't');
+        auto lowerval = ToLowercase(val);
+        result = (val == "true" || val == "t");
         return true;
     }
 

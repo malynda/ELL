@@ -37,17 +37,26 @@ set(LLVMSetup_included true)
 function (get_llvm_config_list options output_var)
     set(output)
     execute_process(COMMAND "${LLVM_TOOLS_BINARY_DIR}/llvm-config" ${options} OUTPUT_VARIABLE output)
-    string(STRIP ${output} output)
-    string(REPLACE "-l" "" output ${output})
+    string(STRIP "${output}" output)
+    string(REPLACE "-l" "" output "${output}")
     separate_arguments(output)
     set(${output_var} ${output} PARENT_SCOPE)
 endfunction()
 
 # First try to use LLVM's CMake target (see http://llvm.org/releases/3.7.0/docs/CMake.html for documentation)
-find_package(LLVM 3.9 PATHS /usr/local/opt QUIET)
+foreach(llvm_version 3.9)
+    find_package(LLVM ${llvm_version})
+    if(LLVM_FOUND)
+        break()
+    endif()
+endforeach()
 
 if(LLVM_FOUND)
+    message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+    message("Found LLVM package version ${LLVM_VERSION_MAJOR}.${LLVM_VERSION_MINOR}")
+    find_program(llvm-config NAMES llvm-config-${LLVM_VERSION_MAJOR}.${LLVM_VERSION_MINOR} llvm-config PATHS "${LLVM_TOOLS_BINARY_DIR}")
     # Find the libraries we wish to use
+    message(STATUS "Using llvm-config at: ${llvm-config}")
     get_llvm_config_list("--libs;all" LLVM_LIBS)
     get_llvm_config_list("--system-libs" LLVM_SYSTEM_LIBS)
     list(APPEND LLVM_LIBS ${LLVM_SYSTEM_LIBS})
@@ -56,9 +65,9 @@ if(LLVM_FOUND)
         list(APPEND LLVM_COMPILE_OPTIONS "-fvisibility-inlines-hidden")
     endif()
 
-elseif(MSVC) # Didn't find LLVM via find_package. If we're on Windows, try installing via NuGet
+elseif(WIN32) # Didn't find LLVM via find_package. If we're on Windows, try installing via NuGet
     set(LLVM_PACKAGE_NAME LLVMNativeWindowsLibs.x64)
-    set(LLVM_PACKAGE_VERSION 3.9.1)
+    set(LLVM_PACKAGE_VERSION 3.9.1.2)
     set(LLVM_PACKAGE_DIR ${PACKAGE_ROOT}/${LLVM_PACKAGE_NAME}.${LLVM_PACKAGE_VERSION})
 
     # Get LLVM libraries via NuGet if we're on Windows

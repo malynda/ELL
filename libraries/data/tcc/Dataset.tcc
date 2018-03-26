@@ -8,6 +8,7 @@
 
 // utilities
 #include "Exception.h"
+#include "Logger.h"
 
 // stl
 #include <algorithm>
@@ -19,6 +20,8 @@ namespace ell
 {
 namespace data
 {
+    using namespace logging;
+
     template <typename ExampleType>
     ExampleIterator<ExampleType> AnyDataset::GetExampleIterator() const
     {
@@ -116,6 +119,18 @@ namespace data
     }
 
     template <typename DatasetExampleType>
+    template <typename otherExampleType>
+    Dataset<otherExampleType> Dataset<DatasetExampleType>::Transform(std::function<otherExampleType(const DatasetExampleType&)> transformationFunction)
+    {
+        Dataset<otherExampleType> dataset;
+        for (auto& example : _examples)
+        {
+            dataset.AddExample(transformationFunction(example));
+        }
+        return dataset;
+    }
+
+    template <typename DatasetExampleType>
     void Dataset<DatasetExampleType>::Reset()
     {
         _examples.clear();
@@ -194,7 +209,7 @@ namespace data
         {
             os << std::string(tabs * 4, ' ');
             _examples[index].Print(os);
-            os << "\n";
+            os << EOL;
         }
     }
 

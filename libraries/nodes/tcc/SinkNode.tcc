@@ -16,13 +16,30 @@ namespace nodes
 {
     template <typename ValueType>
     SinkNode<ValueType>::SinkNode()
-        : CompilableNode({ &_input }, { &_output }), _input(this, {}, inputPortName), _output(this, outputPortName, 0)
+        : SinkNode({}, {}, math::TensorShape{ 0, 0, 0 }, "", nullptr)
+    {
+    }
+
+    // Following the pattern of OutputNode, we provide a constructor override that infers the shape from the input
+    template <typename ValueType>
+    SinkNode<ValueType>::SinkNode(const model::PortElements<ValueType>& input, const model::PortElements<bool>& trigger, const std::string& sinkFunctionName, SinkFunction<ValueType> sink)
+        : SinkNode(input, trigger, math::TensorShape{ input.Size(), 1, 1 }, sinkFunctionName, sink)
     {
     }
 
     template <typename ValueType>
-    SinkNode<ValueType>::SinkNode(const model::PortElements<ValueType>& input, SinkFunction<ValueType> sink, const std::string& sinkFunctionName)
-        : CompilableNode({ &_input }, { &_output }), _input(this, input, inputPortName), _output(this, outputPortName, _input.Size()), _sink(std::move(sink)), _sinkFunctionName(sinkFunctionName)
+    SinkNode<ValueType>::SinkNode(const model::PortElements<ValueType>& input, const model::PortElements<bool>& trigger, size_t outputVectorSize, const std::string& sinkFunctionName, SinkFunction<ValueType> sink)
+        : SinkNode(input, trigger, math::TensorShape{ outputVectorSize, 1, 1 }, sinkFunctionName, sink)
+    {
+    }
+
+    template <typename ValueType>
+    SinkNode<ValueType>::SinkNode(const model::PortElements<ValueType>& input, const model::PortElements<bool>& trigger, const math::TensorShape& shape, const std::string& sinkFunctionName, SinkFunction<ValueType> sink)
+        : model::SinkNodeBase(_input, _trigger, _output, shape, sinkFunctionName),
+        _input(this, input, defaultInputPortName),
+        _trigger(this, trigger, triggerPortName),
+        _output(this, defaultOutputPortName, shape.Size()),
+        _sink(sink == nullptr ? [](const auto&){} : sink)
     {
     }
 
@@ -31,8 +48,7 @@ namespace nodes
     {
         DEBUG_THROW(_sink == nullptr, utilities::InputException(utilities::InputExceptionErrors::nullReference, "Sink function is not set"));
 
-        auto result = EvaluateInput();
-        if (result && _sink != nullptr)
+        if (_sink != nullptr && _trigger.GetValue(0))
         {
             _sink(_input.GetValue());
         }
@@ -43,38 +59,38 @@ namespace nodes
     void SinkNode<ValueType>::Compile(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function)
     {
         llvm::Value* pInput = compiler.EnsurePortEmitted(input);
+        llvm::Value* pTrigger = compiler.EnsurePortEmitted(trigger);
+        std::string prefixedName(compiler.GetNamespacePrefix() + "_" + GetCallbackName());
+        auto& module = function.GetModule();
 
-        // EvaluateInput defaults to 'pass through' in base implementation, which means
-        // we always call the sink function
-        if (IsScalar(input))
+        auto if1 = function.If(emitters::TypedComparison::equals, pTrigger, function.Literal(true));
         {
-            // Callback signature: void SinkFunction(ValueType t)
-            const emitters::ValueTypeList parameters = { emitters::GetVariableType<ValueType>() };
-            function.GetModule().DeclareFunction(_sinkFunctionName, emitters::VariableType::Void, parameters);
+            if (IsScalar(input))
+            {
+                // Callback signature: void SinkFunction(ValueType t)
+                const emitters::NamedVariableTypeList parameters = { { "output", emitters::GetVariableType<ValueType>() } };
+                module.DeclareFunction(prefixedName, emitters::VariableType::Void, parameters);
 
-            llvm::Function* pSinkFunction = function.GetModule().GetFunction(_sinkFunctionName);
-            DEBUG_EMIT_PRINTF(function, _sinkFunctionName + "\n");
+                llvm::Function* pSinkFunction = module.GetFunction(prefixedName);
+                function.Call(pSinkFunction, { compiler.LoadPortElementVariable(input.GetInputElement(0)) });
+            }
+            else
+            {
+                // Callback signature: void SinkFunction(ValueType* array)
+                const emitters::NamedVariableTypeList parameters = { { "output", emitters::GetPointerType(emitters::GetVariableType<ValueType>()) } };
+                module.DeclareFunction(prefixedName, emitters::VariableType::Void, parameters);
 
-            function.Call(pSinkFunction, { pInput });
+                llvm::Function* pSinkFunction = module.GetFunction(prefixedName);
+                function.Call(pSinkFunction, { function.PointerOffset(pInput, function.Literal(0)) });
+            }
         }
-        else
-        {
-            // Callback signature: void SinkFunction(ValueType* array)
-            const emitters::ValueTypeList parameters = { emitters::GetPointerType(emitters::GetVariableType<ValueType>()) };
-            function.GetModule().DeclareFunction(_sinkFunctionName, emitters::VariableType::Void, parameters);
-
-            llvm::Function* pSinkFunction = function.GetModule().GetFunction(_sinkFunctionName);
-            DEBUG_EMIT_PRINTF(function, _sinkFunctionName + "\n");
-
-            function.Call(pSinkFunction, { function.PointerOffset(pInput, function.Literal(0)) });
-        }
+        if1.End();
 
         // Tag the sink function as a callback that is emitted in headers
-        function.GetModule().IncludeInHeader(_sinkFunctionName);
-        function.GetModule().IncludeInCallbackInterface(_sinkFunctionName, "SinkNode");
+        module.IncludeInCallbackInterface(prefixedName, "SinkNode");
 
         // Set output values as well, useful when user code is in a non-event-driven mode
-        if (!IsScalar(input) && !compiler.GetCompilerParameters().unrollLoops)
+        if (!IsScalar(input) && !compiler.GetCompilerOptions().unrollLoops)
         {
             SetOutputValuesLoop(compiler, function);
         }
@@ -87,58 +103,90 @@ namespace nodes
     template <typename ValueType>
     void SinkNode<ValueType>::Copy(model::ModelTransformer& transformer) const
     {
-        auto newPortElements = transformer.TransformPortElements(_input.GetPortElements());
-        auto newNode = transformer.AddNode<SinkNode<ValueType>>(newPortElements, _sink, _sinkFunctionName);
+        auto newInput = transformer.TransformPortElements(_input.GetPortElements());
+        auto newTrigger = transformer.TransformPortElements(_trigger.GetPortElements());
+        auto newNode = transformer.AddNode<SinkNode<ValueType>>(newInput, newTrigger, GetShape(), GetCallbackName(), _sink);
         transformer.MapNodeOutput(output, newNode->output);
+    }
+
+    template <typename ValueType>
+    utilities::ArchiveVersion SinkNode<ValueType>::GetArchiveVersion() const
+    {
+        constexpr utilities::ArchiveVersion sinkNodeShapeArchiveVersion = { utilities::ArchiveVersionNumbers::v6_sink_triggers };
+
+        return sinkNodeShapeArchiveVersion;
+    }
+
+    template <typename ValueType>
+    bool SinkNode<ValueType>::CanReadArchiveVersion(const utilities::ArchiveVersion& version) const
+    {
+        constexpr utilities::ArchiveVersion sinkNodeNoShapeArchiveVersion = { utilities::ArchiveVersionNumbers::v0_initial };
+        constexpr utilities::ArchiveVersion sinkNodeShapeArchiveVersion = { utilities::ArchiveVersionNumbers::v6_sink_triggers };
+
+        return version >= sinkNodeNoShapeArchiveVersion && version <= sinkNodeShapeArchiveVersion;
     }
 
     template <typename ValueType>
     void SinkNode<ValueType>::WriteToArchive(utilities::Archiver& archiver) const
     {
         Node::WriteToArchive(archiver);
-        archiver[inputPortName] << _input;
-        archiver["sinkFunctionName"] << _sinkFunctionName;
+        archiver[defaultInputPortName] << _input;
+        archiver[triggerPortName] << _trigger;
+        archiver["sinkFunctionName"] << GetCallbackName();
+        archiver["shape"] << static_cast<std::vector<size_t>>(GetShape());
     }
 
     template <typename ValueType>
     void SinkNode<ValueType>::ReadFromArchive(utilities::Unarchiver& archiver)
     {
         Node::ReadFromArchive(archiver);
-        archiver[inputPortName] >> _input;
-        archiver["sinkFunctionName"] >> _sinkFunctionName;
-        // _sink needs to be set separately
-    }
+        archiver[defaultInputPortName] >> _input;
+        archiver[triggerPortName] >> _trigger;
 
-    template <typename ValueType>
-    bool SinkNode<ValueType>::EvaluateInput() const
-    {
-        // Default pass through (derived classes will override).
-        return true;
+        std::string sinkFunctionName;
+        archiver["sinkFunctionName"] >> sinkFunctionName;
+        SetCallbackName(sinkFunctionName);
+
+        std::vector<size_t> shapeVector;
+        archiver["shape"] >> shapeVector;
+        SetShape(math::TensorShape{ shapeVector });
+
+        // _sink needs to be set separately
     }
 
     template <typename ValueType>
     void SinkNode<ValueType>::SetOutputValuesLoop(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function)
     {
-        llvm::Value* pInput = compiler.EnsurePortEmitted(input);
         llvm::Value* pOutput = compiler.EnsurePortEmitted(output);
 
-        auto numInputs = input.Size();
-        assert(numInputs == output.Size());
+        assert(input.Size() == output.Size());
 
-        auto forLoop = function.ForLoop();
-        forLoop.Begin(0, numInputs, 1);
+        // Concatenate the input ports in a similar way as OutputNodes,
+        // because SinkNodes are just callback-enabled OutputNodes.
+        auto inputElements = input.GetInputElements();
+        int rangeStart = 0;
+        for (auto range : inputElements.GetRanges())
         {
-            auto i = forLoop.LoadIterationVariable();
-            auto value = function.ValueAt(pInput, i);
-            function.SetValueAt(pOutput, i, value);
+            llvm::Value* pInput = compiler.EnsurePortEmitted(*range.ReferencedPort());
+            auto forLoop = function.ForLoop();
+            auto rangeSize = range.Size();
+            forLoop.Begin(rangeSize);
+            {
+                auto i = forLoop.LoadIterationVariable();
+                auto inputIndex = function.Operator(emitters::TypedOperator::add, i, function.Literal<int>(range.GetStartIndex()));
+                auto outputIndex = function.Operator(emitters::TypedOperator::add, i, function.Literal(rangeStart));
+                llvm::Value* value = function.ValueAt(pInput, inputIndex);
+                function.SetValueAt(pOutput, outputIndex, value);
+            }
+            forLoop.End();
+            rangeStart += rangeSize;
         }
-        forLoop.End();
     }
 
     template <typename ValueType>
     void SinkNode<ValueType>::SetOutputValuesExpanded(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function)
     {
-        llvm::Value* pInput = compiler.EnsurePortEmitted(input);
+        compiler.EnsurePortEmitted(input);
         llvm::Value* pOutput = compiler.EnsurePortEmitted(output);
 
         auto numInputs = input.Size();
@@ -146,6 +194,7 @@ namespace nodes
 
         for (size_t i = 0; i < numInputs; ++i)
         {
+            // Concatenate the input ports
             llvm::Value* value = compiler.LoadPortElementVariable(input.GetInputElement(i));
             function.SetValueAt(pOutput, function.Literal(static_cast<int>(i)), value);
         }

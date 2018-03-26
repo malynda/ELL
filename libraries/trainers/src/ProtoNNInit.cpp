@@ -20,8 +20,8 @@ namespace ell
 {
 namespace trainers
 {
-    ProtoNNInit::ProtoNNInit(size_t dim, size_t numLabels, size_t numPrototypesPerLabel) : _dim(dim), _numLabels(numLabels), _numPrototypesPerLabel(numPrototypesPerLabel),
-        _B(dim, numLabels * numPrototypesPerLabel), _Z(numLabels, numLabels * numPrototypesPerLabel) {	}
+    ProtoNNInit::ProtoNNInit(size_t dim, size_t numLabels, size_t numPrototypesPerLabel)
+        : _dim(dim), _numPrototypesPerLabel(numPrototypesPerLabel), _B(dim, numLabels * numPrototypesPerLabel), _Z(numLabels, numLabels * numPrototypesPerLabel) {}
 
     void ProtoNNInit::Initialize(math::ConstMatrixReference<double, math::MatrixLayout::columnMajor> WX, math::ConstMatrixReference<double, math::MatrixLayout::columnMajor> Y)
     {
@@ -32,7 +32,7 @@ namespace trainers
         {
             std::vector<size_t> indexes;
 
-            for (int i = 0; i < Y.NumColumns(); ++i)
+            for (size_t i = 0; i < Y.NumColumns(); ++i)
             {
                 if (1 == Y(l, i))
                     indexes.push_back(i);
@@ -40,7 +40,7 @@ namespace trainers
 
             math::ColumnMatrix<double> wx_label(_dim, indexes.size());
 
-            for (int i = 0; i < indexes.size(); ++i)
+            for (size_t i = 0; i < indexes.size(); ++i)
             {
                 wx_label.GetColumn(i).CopyFrom(WX.GetColumn(indexes[i]));
             }
@@ -53,7 +53,7 @@ namespace trainers
 
             auto clusterMeans = kMeans.GetClusterMeans();
 
-            for (int i = 0; i < _numPrototypesPerLabel; ++i)
+            for (size_t i = 0; i < _numPrototypesPerLabel; ++i)
             {
                 _B.GetColumn(l * _numPrototypesPerLabel + i).CopyFrom(clusterMeans.GetColumn(i));
                 _Z.GetColumn(l * _numPrototypesPerLabel + i).CopyFrom(label);
@@ -63,12 +63,10 @@ namespace trainers
 
     double ProtoNNInit::InitializeGamma(math::ConstMatrixReference<double, math::MatrixLayout::columnMajor> D, double gammaInit)
     {
-        auto numValues = D.NumRows() * D.NumColumns();
-        assert(numValues > 0);
-        std::vector<double> values;
-        values.assign(D.GetDataPointer(), D.GetDataPointer() + (size_t)(numValues));
+        auto values = D.ToArray();
+        assert(values.size() > 0);
         std::sort(values.begin(), values.end());
-        auto median = values[numValues / 2];
+        auto median = values[values.size() / 2];
         auto rbfWidth = 2.5;
         return gammaInit * (rbfWidth / std::sqrt(-1.0 * std::log(median)));
     }

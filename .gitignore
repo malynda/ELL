@@ -231,6 +231,9 @@ yotta_targets/
 # CMake / CTest stuff
 /Testing/
 
+# ELL user directory
+user/**
+
 # ELL External Dependencies
 external/**
 !external/README.md
@@ -240,6 +243,7 @@ swig/
 dist/
 build/
 build_*/
+build-*/
 
 interfaces/javascript/ell_module/CMakeFiles/
 interfaces/javascript/ell_module/test/js/Testing/
@@ -260,3 +264,6 @@ LaunchXslt/obj/**
 /_site/
 /.sass-cache/
 Gemfile.lock
+
+# ctags tag file
+tags

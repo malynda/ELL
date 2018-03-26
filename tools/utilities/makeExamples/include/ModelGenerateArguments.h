@@ -23,6 +23,7 @@ struct ModelGenerateArguments
         map
     };
     OutputType outputType;
+    std::string outputPath;
 };
 
 /// <summary> A version of ModelGenerateArguments that adds its members to the command line parser. </summary>
@@ -31,6 +32,6 @@ struct ParsedModelGenerateArguments : public ModelGenerateArguments, public util
     /// <summary> Adds the arguments to the command line parser. </summary>
     ///
     /// <param name="parser"> [in,out] The parser. </param>
-    virtual void AddArgs(utilities::CommandLineParser& parser) override;
+    void AddArgs(utilities::CommandLineParser& parser) override;
 };
 }

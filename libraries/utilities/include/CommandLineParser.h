@@ -7,11 +7,12 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #pragma once
+#include "StringUtil.h"
 
 // stl
 #include <cstddef>
 #include <functional>
-#include <iostream>
+#include <initializer_list>
 #include <map>
 #include <set>
 #include <stdexcept>
@@ -73,7 +74,11 @@ namespace utilities
         /// <param name="argc"> The number of argument strings in the array of arguments </param>
         /// <param name="argv"> The array of argument strings </param>
         CommandLineParser(int argc, char* argv[]);
+
+        /// <summary></summary>
         CommandLineParser(int argc, const char* argv[]);
+
+        virtual ~CommandLineParser() = default;
 
         /// <summary> Adds a new option to the command-line parser </summary>
         ///
@@ -116,6 +121,16 @@ namespace utilities
         /// <param name="docString"> The string to be printed </param>
         virtual void AddDocumentationString(std::string docString);
 
+        /// <summary> Disables an option </summary>
+        ///
+        /// <param name="name"> The long name for the option. </param>
+        virtual void DisableOption(std::string name);
+
+        /// <summary> Enables a previously-disabled option </summary>
+        ///
+        /// <param name="name"> The long name for the option. </param>
+        virtual void EnableOption(std::string name);
+
         using PostParseCallback = std::function<CommandLineParseResult(CommandLineParser&)>;
 
         /// <summary> Adds a callback function that gets invoked after Parse() is called </summary>
@@ -140,19 +155,26 @@ namespace utilities
         std::string GetCommandLine() const;
 
         /// <summary> Returns the value of a given option (as a string) </summary>
-        std::string GetOptionValue(const std::string& option);
+        ///
+        /// <param name="name"> The long name for the option </param>
+        std::string GetOptionValue(const std::string& name);
 
         /// <summary> Returns true if the given option has been registered </summary>
         ///
-        /// <param name="option"> The long name for the option </param>
+        /// <param name="name"> The long name for the option </param>
         /// <returns> true if the given option has been registered </returns>
-        bool HasOption(std::string option);
+        bool HasOption(std::string name);
 
         /// <summary> Returns true if the given short name has been registered </summary>
         ///
         /// <param name="shortName"> The short name </param>
         /// <returns> true if the given short name has been registered </returns>
         bool HasShortName(std::string shortName);
+
+        /// <summary> Returns any args after the "--" separator </summary>
+        ///
+        /// <returns> The passthrough args </returns>
+        std::vector<std::string> GetPassthroughArgs() { return _passthroughArgs;  }
 
     private:
         CommandLineParser(const CommandLineParser&) = delete;
@@ -191,6 +213,7 @@ namespace utilities
             std::string emptyValueString; // value to use if no value follows the option
             std::string currentValueString;
             std::vector<std::string> enumValues;
+            bool enabled = true;
 
             std::vector<std::function<bool(std::string)>> set_value_callbacks; // callback returns "true" if value was successfully std::set, otherwise "false"
             std::vector<std::function<bool(std::string)>> didSetValueCallbacks; // callback returns "true" if value was successfully std::set, otherwise "false"
@@ -205,18 +228,30 @@ namespace utilities
             size_t optionNameHelpLength() const;
         };
 
+        struct case_insensitive_comparer
+        {
+            bool operator()(const std::string& lhs, const std::string& rhs) const
+            {
+                // STYLE discrepancy
+                auto lower_lhs = ToLowercase(lhs);
+                auto lower_rhs = ToLowercase(rhs);
+                return lower_lhs < lower_rhs;
+            }
+        };
+
         std::vector<std::string> _originalArgs;
         std::string _exeName;
         std::vector<std::string> _positionalArgs; // these are filename-type args at the end, currently unused
         std::map<std::string, std::string> _shortToLongNameMap;
-        std::map<std::string, OptionInfo> _options;
+        std::map<std::string, OptionInfo, case_insensitive_comparer> _options;
         std::vector<DocumentationEntry> _docEntries;
         std::vector<PostParseCallback> _postParseCallbacks;
-
+        std::vector<std::string> _passthroughArgs;
         void AddOption(const OptionInfo& info);
         virtual bool SetOption(std::string option_name); // returns true if we need to reparse
         virtual bool SetOption(std::string option_name, std::string option_val); // returns true if we need to reparse
-        bool SetDefaultArgs(const std::set<std::string>& unset_args); // returns true if we need to reparse
+        OptionInfo* FindOption(const std::string& name);
+        bool SetDefaultArgs(const std::set<std::string, case_insensitive_comparer>& unset_args); // returns true if we need to reparse
     };
 
     /// <summary> A mixin class to make parameter structs be parseable. </summary>
@@ -246,6 +281,7 @@ namespace utilities
     class CommandLineParserException : public std::runtime_error
     {
     public:
+        /// <summary></summary>
         CommandLineParserException(const char* message)
             : std::runtime_error(message){};
     };
@@ -267,7 +303,7 @@ namespace utilities
     };
 
     /// <summary> An exception representing an error during parsing. </summary>
-    class CommandLineParserErrorException : CommandLineParserException
+    class CommandLineParserErrorException : public CommandLineParserException
     {
     public:
         /// <summary> Returns list of parse errors that occured during parsing </summary>
@@ -278,8 +314,11 @@ namespace utilities
         /// <summary> Constructor. Called by command-line parser </summary>
         CommandLineParserErrorException(const char* message)
             : CommandLineParserException(message) {}
+
+        /// <summary></summary>
         CommandLineParserErrorException(const char* message, std::vector<ParseError> errors)
             : CommandLineParserException(message), _errors(errors) {}
+
     private:
         std::vector<ParseError> _errors;
     };
@@ -305,6 +344,7 @@ namespace utilities
     class CommandLineParserInvalidOptionsException : public CommandLineParserException
     {
     public:
+        /// <summary></summary>
         CommandLineParserInvalidOptionsException(const char* what)
             : CommandLineParserException(what) {}
     };

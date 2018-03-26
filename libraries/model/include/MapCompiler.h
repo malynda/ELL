@@ -8,19 +8,16 @@
 
 #pragma once
 
-// emitters
-#include "EmitterTypes.h"
-#include "ModuleEmitter.h"
-#include "TargetDevice.h"
-#include "Variable.h"
-
-// model
 #include "CompilableNodeUtilities.h"
-#include "DynamicMap.h"
-#include "Model.h"
-#include "Node.h"
+#include "MapCompilerOptions.h"
 #include "OutputPort.h"
 #include "PortElements.h"
+
+// emitters
+#include "CompilerOptions.h"
+#include "EmitterTypes.h"
+#include "ModuleEmitter.h"
+#include "Variable.h"
 
 // stl
 #include <stack>
@@ -31,17 +28,10 @@ namespace ell
 {
 namespace model
 {
-    struct MapCompilerParameters
-    {
-        std::string moduleName = "ELL";
-        std::string mapFunctionName = "predict";
-        bool inlineNodes = false;
-        bool fuseLinearFunctionNodes = false;
-        bool profile = false;
-
-        emitters::CompilerParameters compilerSettings;
-    };
-
+    class Map;
+    class Model;
+    class Node;
+    
     /// <summary> Abstract base class for ELL model compilers. </summary>
     class MapCompiler
     {
@@ -52,12 +42,13 @@ namespace model
         ///
         /// <param name="map"> The map to compile. </param>
         /// <param name="functionName"> The name of the function to create. </param>
-        void CompileMap(DynamicMap& map, const std::string& functionName);
+        /// <param name="parameterNames"> The parameter names of the function to create. </param>
+        void CompileMap(Map& map, const std::string& functionName);
 
         /// <summary> Gets the model-specific compiler parameters being used by the map compiler. </summary>
         ///
-        /// <returns> The MapCompilerParameters struct used by the map compiler to control code generation. </returns>
-        MapCompilerParameters GetMapCompilerParameters() const { return _parameters; }
+        /// <returns> The MapCompilerOptions struct used by the map compiler to control code generation. </returns>
+        const MapCompilerOptions& GetMapCompilerOptions() const { return _parameters; }
 
         //
         // Routines for Node implementers
@@ -94,7 +85,7 @@ namespace model
         void SetVariableForElement(const PortElementBase& element, emitters::Variable* pVar);
 
     protected:
-        MapCompiler(const MapCompilerParameters& settings);
+        MapCompiler(const MapCompilerOptions& settings);
 
         /// <summary>
         /// Create a variable to store computed output for the given output port. The variable
@@ -111,7 +102,7 @@ namespace model
         /// <summary>
         /// Allocate variables for the map function arguments, based on the input and output nodes.
         /// </summary>
-        emitters::NamedVariableTypeList AllocateNodeFunctionArguments(DynamicMap& map, emitters::ModuleEmitter& emitter);
+        emitters::NamedVariableTypeList AllocateNodeFunctionArguments(Map& map, emitters::ModuleEmitter& emitter);
 
         //
         // These methods may be implemented by specific compilers
@@ -137,7 +128,7 @@ namespace model
         emitters::Variable* AllocateNodeFunctionArgument(emitters::ModuleEmitter& emitter, const OutputPortBase* pPort, ArgType argType);
         emitters::Variable* AllocateNodeFunctionArgument(emitters::ModuleEmitter& emitter, const PortElementBase& element, ArgType argType);
 
-        MapCompilerParameters _parameters;
+        MapCompilerOptions _parameters;
         // map from ports to runtime variables, for all ports in the model
         // stored as a stack, with the top of the stack being the innermost scope
         std::vector<std::unordered_map<const Port*, emitters::Variable*>> _portToVarMaps; // Do we need separate elementToVarMaps?

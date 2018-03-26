@@ -10,34 +10,34 @@
 #include "IRModuleEmitter.h"
 
 // llvm
-#include "llvm/Support/TargetSelect.h"
+#include <llvm/Support/TargetSelect.h>
 
 // stl
-#include <sstream>
+#include <memory>
+#include <string>
 
 namespace ell
 {
 namespace emitters
 {
-
     void FatalErrorHandler(void* userData, const std::string& reason, bool genCrashDiag)
     {
         std::string msg = "llvm fatal error: " + reason;
         throw emitters::EmitterException(emitters::EmitterError::unexpected, msg);
     }
 
-    IRExecutionEngine::IRExecutionEngine(IRModuleEmitter&& module)
-        : IRExecutionEngine(module.TransferOwnership())
+    IRExecutionEngine::IRExecutionEngine(IRModuleEmitter&& module, bool verify)
+        : IRExecutionEngine(module.TransferOwnership(), verify)
     {
     }
 
-    IRExecutionEngine::IRExecutionEngine(std::unique_ptr<llvm::Module> pModule)
+    IRExecutionEngine::IRExecutionEngine(std::unique_ptr<llvm::Module> pModule, bool verify)
     {
         llvm::InitializeNativeTarget();
         llvm::InitializeNativeTargetAsmPrinter();
 
         _pBuilder = std::make_unique<llvm::EngineBuilder>(std::move(pModule));
-        _pBuilder->setEngineKind(llvm::EngineKind::JIT).setUseOrcMCJITReplacement(false);
+        _pBuilder->setEngineKind(llvm::EngineKind::JIT).setVerifyModules(verify).setUseOrcMCJITReplacement(false);
 
         static bool installed = false;
         if (!installed)
@@ -48,14 +48,12 @@ namespace emitters
         }
     }
 
-    void IRExecutionEngine::SelectTarget(const llvm::Triple& targetTriple, const std::string& cpuArchitecture, const std::string& cpuName, const std::vector<std::string>& attributes)
+    IRExecutionEngine::~IRExecutionEngine()
     {
-        llvm::SmallVector<std::string, 4> attrs;
-        for (auto attribute : attributes)
+        if(_pEngine)
         {
-            attrs.push_back(attribute);
+            PerformFinalization();
         }
-        _pBuilder->selectTarget(targetTriple, cpuArchitecture, cpuName, attrs);
     }
 
     void IRExecutionEngine::AddModule(std::unique_ptr<llvm::Module> pModule)
@@ -63,6 +61,16 @@ namespace emitters
         assert(pModule != nullptr);
         EnsureEngine();
         _pEngine->addModule(std::move(pModule));
+    }
+
+    void IRExecutionEngine::PerformInitialization()
+    {
+        _pEngine->runStaticConstructorsDestructors(false);
+    }
+
+    void IRExecutionEngine::PerformFinalization()
+    {
+        _pEngine->runStaticConstructorsDestructors(true);
     }
 
     uint64_t IRExecutionEngine::GetFunctionAddress(const std::string& name)
@@ -79,6 +87,12 @@ namespace emitters
             throw EmitterException(EmitterError::functionNotFound);
         }
         return functionAddress;
+    }
+
+    void IRExecutionEngine::DefineFunction(llvm::Function* func, uint64_t address)
+    {
+        EnsureEngine();
+        _pEngine->addGlobalMapping(func, (void*)address);
     }
 
     DynamicFunction IRExecutionEngine::GetMain()
@@ -109,6 +123,7 @@ namespace emitters
         {
             auto pEngine = _pBuilder->create();
             _pEngine.reset(pEngine);
+            PerformInitialization();
         }
     }
 }

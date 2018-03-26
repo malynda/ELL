@@ -25,15 +25,22 @@
 #include "BinaryConvolutionalLayer.h"
 #include "ConvolutionalLayer.h"
 #include "FullyConnectedLayer.h"
+#include "GRULayer.h"
+#include "HardSigmoidActivation.h"
 #include "InputLayer.h"
 #include "LeakyReLUActivation.h"
+#include "LSTMLayer.h"
 #include "MaxPoolingFunction.h"
 #include "MeanPoolingFunction.h"
+#include "ParametricReLUActivation.h"
 #include "PoolingLayer.h"
+#include "RecurrentLayer.h"
+#include "RegionDetectionLayer.h"
 #include "ReLUActivation.h"
 #include "ScalingLayer.h"
 #include "SigmoidActivation.h"
 #include "SoftmaxLayer.h"
+#include "TanhActivation.h"
 
 // utilities
 #include "IArchivable.h"
@@ -60,7 +67,7 @@ namespace predictors
 
         /// <summary> A unique_ptr to the input layer for this predictor. </summary>
         using InputLayerReference = std::shared_ptr<neural::InputLayer<ElementType>>;
-        
+
         /// <summary> A vector of layers. </summary>
         using Layers = std::vector<std::shared_ptr<neural::Layer<ElementType>>>;
 
@@ -92,7 +99,12 @@ namespace predictors
         /// <summary> Sets the underlying layers. </summary>
         ///
         /// <returns> The underlying vector of layers. </returns>
-        void SetLayers(Layers&& layers) { _layers = std::move(layers); }
+        void SetLayers(Layers&& layers) { _layers = std::move(layers); } // STYLE discrepancy
+
+        /// <summary> Removes layers from the end of the neural network.  </summary>
+        ///
+        /// <param name="numberToRemove"> The number of layers to remove from the end of the neural network. </param>
+        void RemoveLastLayers(size_t numberToRemove = 1);
 
         /// <summary> Gets the dimension of the input layer. </summary>
         ///
@@ -111,6 +123,13 @@ namespace predictors
         /// <returns> The prediction. </returns>
         const std::vector<ElementType>& Predict(const DataVectorType& dataVector) const;
 
+        /// <summary> Returns the output of the network for a given input. </summary>
+        ///
+        /// <param name="input"> The input data. </param>
+        ///
+        /// <returns> The prediction. </returns>
+        const std::vector<ElementType>& Predict(const std::vector<ElementType>& input) const;
+
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
@@ -119,7 +138,7 @@ namespace predictors
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+        std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
         /// <summary> Register known types for neural network predictors to a serialization context </summary>
         ///
@@ -132,11 +151,12 @@ namespace predictors
         static utilities::ArchiveVersion GetCurrentArchiveVersion();
 
     protected:
-        virtual utilities::ArchiveVersion GetArchiveVersion() const override;
-        virtual void WriteToArchive(utilities::Archiver& archiver) const override;
-        virtual void ReadFromArchive(utilities::Unarchiver& archiver) override;
+        utilities::ArchiveVersion GetArchiveVersion() const override;
+        void WriteToArchive(utilities::Archiver& archiver) const override;
+        void ReadFromArchive(utilities::Unarchiver& archiver) override;
 
     private:
+        void Compute() const;
         InputLayerReference _inputLayer;
         Layers _layers;
         mutable std::vector<ElementType> _output;

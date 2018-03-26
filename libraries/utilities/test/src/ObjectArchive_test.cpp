@@ -25,6 +25,8 @@
 
 namespace ell
 {
+    using namespace utilities;
+
 class InnerObject : public utilities::IArchivable
 {
 public:
@@ -34,20 +36,20 @@ public:
     int GetA() const { return _a; }
     double GetB() const { return _b; }
 
-    virtual void WriteToArchive(utilities::Archiver& archiver) const override
+    void WriteToArchive(utilities::Archiver& archiver) const override
     {
         archiver["a"] << _a;
         archiver["b"] << _b;
     }
 
-    virtual void ReadFromArchive(utilities::Unarchiver& archiver) override
+    void ReadFromArchive(utilities::Unarchiver& archiver) override
     {
         archiver["a"] >> _a;
         archiver["b"] >> _b;
     }
 
     static std::string GetTypeName() { return "InnerObject"; }
-    virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+    std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
 private:
     int _a = 0;
@@ -62,20 +64,20 @@ public:
         : InnerObject(a, b), _c(c) {}
     std::string GetC() { return _c; }
 
-    virtual void WriteToArchive(utilities::Archiver& archiver) const override
+    void WriteToArchive(utilities::Archiver& archiver) const override
     {
         InnerObject::WriteToArchive(archiver);
         archiver["c"] << _c;
     }
 
-    virtual void ReadFromArchive(utilities::Unarchiver& archiver) override
+    void ReadFromArchive(utilities::Unarchiver& archiver) override
     {
         InnerObject::ReadFromArchive(archiver);
         archiver["c"] >> _c;
     }
 
     static std::string GetTypeName() { return "DerivedObject"; }
-    virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+    std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
 private:
     std::string _c = "";
@@ -90,20 +92,20 @@ public:
     std::string GetName() { return _name; }
     InnerObject GetInner() { return _inner; }
 
-    virtual void WriteToArchive(utilities::Archiver& archiver) const override
+    void WriteToArchive(utilities::Archiver& archiver) const override
     {
         archiver["name"] << _name;
         archiver["obj"] << _inner;
     }
 
-    virtual void ReadFromArchive(utilities::Unarchiver& archiver) override
+    void ReadFromArchive(utilities::Unarchiver& archiver) override
     {
         archiver["name"] >> _name;
         archiver["obj"] >> _inner;
     }
 
     static std::string GetTypeName() { return "OuterObject"; }
-    virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+    std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
 private:
     std::string _name;
@@ -122,24 +124,24 @@ void PrintDescription(const utilities::ObjectArchive& description, std::string n
 
     for (const auto& iter : description.GetProperties())
     {
-        auto name = iter.first;
-        auto prop = *iter.second;
-        PrintDescription(prop, name, indentCount + 1);
+        auto propertyName = iter.first;
+        auto propertyValue = *iter.second;
+        PrintDescription(propertyValue, propertyName, indentCount + 1);
     }
 }
 
 void TestGetTypeDescription()
 {
     InnerObject innerObj;
-    auto innerDescription = innerObj.GetDescription();
+    auto innerDescription = GetDescription(innerObj);
     PrintDescription(innerDescription);
 
     OuterObject outerObj;
-    auto outerDescription = outerObj.GetDescription();
+    auto outerDescription = GetDescription(outerObj);
     PrintDescription(outerDescription);
 
     DerivedObject derivedObj;
-    auto derivedDescription = derivedObj.GetDescription();
+    auto derivedDescription = GetDescription(derivedObj);
     PrintDescription(derivedDescription);
 
     testing::ProcessTest("GetDescription", innerDescription.HasProperty("a"));
@@ -157,17 +159,17 @@ void TestGetTypeDescription()
 void TestGetObjectArchive()
 {
     InnerObject innerObj(3, 4.5);
-    auto innerDescription = innerObj.GetDescription();
+    auto innerDescription = GetDescription(innerObj);
     PrintDescription(innerDescription);
     std::cout << std::endl;
 
     OuterObject outerObj("Outer", 5, 6.5);
-    auto outerDescription = outerObj.GetDescription();
+    auto outerDescription = GetDescription(outerObj);
     PrintDescription(outerDescription);
     std::cout << std::endl;
 
     DerivedObject derivedObj(8, 9.5, "derived");
-    auto derivedDescription = derivedObj.GetDescription();
+    auto derivedDescription = GetDescription(derivedObj);
     PrintDescription(derivedDescription);
     std::cout << std::endl;
 

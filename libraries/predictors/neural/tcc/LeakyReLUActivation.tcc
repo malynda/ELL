@@ -18,6 +18,23 @@ namespace neural
         return (( input > 0) ? input : _leakyFactor * input);
     }
 
+    template <typename ElementType>
+    ElementType LeakyReLUActivation<ElementType>::operator()(const ElementType input) const
+    {
+        return Apply(input);
+    }
+
+    template <typename ElementType>
+    ElementType LeakyReLUActivation<ElementType>::Apply(const ElementType input, const math::IntegerTriplet& /*index*/) const
+    {
+        return Apply(input);
+    }
+
+    template <typename ElementType>
+    void LeakyReLUActivation<ElementType>::Apply(math::ColumnVector<ElementType>& input) const
+    {
+        input.Transform([this](ElementType value){ return Apply(value); });
+    }
 }
 }
 }

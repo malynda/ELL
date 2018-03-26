@@ -8,11 +8,8 @@
 
 #pragma once
 
-#include "CompilableNode.h"
-#include "CompilableNodeUtilities.h"
-#include "IRMapCompiler.h"
 #include "ModelTransformer.h"
-#include "Node.h"
+#include "OutputNodeBase.h"
 #include "OutputPort.h"
 
 // utilities
@@ -28,23 +25,6 @@ namespace ell
 /// <summary> model namespace </summary>
 namespace model
 {
-    /// <summary> A node that represents an output from the system. </summary>
-    class OutputNodeBase : public CompilableNode
-    {
-    public:
-        const InputPortBase& GetInputPort() const { return _inputBase; }
-        const OutputPortBase& GetOutputPort() const { return _outputBase; }
-        using Node::GetInputPort;
-        using Node::GetOutputPort;
-
-    protected:
-        OutputNodeBase(InputPortBase& input, OutputPortBase& output);
-        virtual bool ShouldCompileInline() const override { return true; }
-
-    private:
-        InputPortBase& _inputBase;
-        OutputPortBase& _outputBase;
-    };
 
     /// <summary> A node that represents an output from the system. </summary>
     template <typename ValueType>
@@ -53,8 +33,7 @@ namespace model
     public:
         /// @name Input and Output Ports
         /// @{
-        static constexpr const char* inputPortName = "input";
-        static constexpr const char* outputPortName = "output";
+        static constexpr const char* shapeName = "shape";
         const model::InputPort<ValueType>& input = _input;
         const model::OutputPort<ValueType>& output = _output;
         /// @}
@@ -67,6 +46,12 @@ namespace model
         /// <param name="input"> The `PortElements<>` to get the input data from </param>
         OutputNode(const model::PortElements<ValueType>& input);
 
+        /// <summary> Constructor </summary>
+        ///
+        /// <param name="input"> The `PortElements<>` to get the input data from </param>
+        /// <param name="shape"> The shape of the input data </param>
+        OutputNode(const model::PortElements<ValueType>& input, const OutputShape& shape);
+
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
@@ -75,19 +60,17 @@ namespace model
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+        std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
         /// <summary> Makes a copy of this node in the model being constructed by the transformer </summary>
-        virtual void Copy(ModelTransformer& transformer) const override;
+        void Copy(ModelTransformer& transformer) const override;
 
     protected:
-        virtual void WriteToArchive(utilities::Archiver& archiver) const override;
-        virtual void ReadFromArchive(utilities::Unarchiver& archiver) override;
+        void WriteToArchive(utilities::Archiver& archiver) const override;
+        void ReadFromArchive(utilities::Unarchiver& archiver) override;
 
     protected:
-        virtual void Compute() const override;
-        virtual void Compile(IRMapCompiler& compiler, emitters::IRFunctionEmitter& function) override;
-
+        void Compute() const override;
         InputPort<ValueType> _input;
         OutputPort<ValueType> _output;
     };

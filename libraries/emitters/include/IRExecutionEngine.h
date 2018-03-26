@@ -8,9 +8,9 @@
 #pragma once
 
 // llvm
-#include "llvm/ADT/Triple.h"
-#include "llvm/IR/Module.h"
-#include "llvm/ExecutionEngine/ExecutionEngine.h"
+#include <llvm/ExecutionEngine/ExecutionEngine.h>
+#include <llvm/IR/Function.h>
+#include <llvm/IR/Module.h>
 
 namespace ell
 {
@@ -21,7 +21,7 @@ namespace emitters
     /// <summary> Function signature for a basic function that takes no input and returns no output </summary>
     typedef void (*DynamicFunction)(void);
 
-    /// <summary> Wrapper class to setup and manage the LLVM Execution Engine. By default, we us the new "MCJIT" </summary>
+    /// <summary> Wrapper class to setup and manage the LLVM Execution Engine. By default, we use the new "MCJIT" </summary>
     class IRExecutionEngine
     {
     public:
@@ -29,24 +29,18 @@ namespace emitters
         /// Move the primary "owner" module into the execution engine.
         /// </summary>
         ///
-        /// <param name="module"> [in,out] The module. </param>
-        IRExecutionEngine(IRModuleEmitter&& module);
+        /// <param name="module"> The module. </param>
+        /// <param name="verify"> Indicates if the execution engine should run a verification pass before running the code. </param>
+        IRExecutionEngine(IRModuleEmitter&& module, bool verify = false);
 
         /// <summary> Inject the primary "owner" module into the execution engine. </summary>
         ///
         /// <param name="pModule"> The module. </param>
-        IRExecutionEngine(std::unique_ptr<llvm::Module> pModule);
+        /// <param name="verify"> Indicates if the execution engine should run a verification pass before running the code. </param>
+        IRExecutionEngine(std::unique_ptr<llvm::Module> pModule, bool verify = false);
 
-        /// <summary>
-        /// Similar to LLI.exe. Set the CPU type, architecture and so on that the execution engine should
-        /// use. By default we will automatically map to x86.
-        /// </summary>
-        ///
-        /// <param name="targetTriple"> Target triple. </param>
-        /// <param name="cpuArchitecture"> The CPU architecture. </param>
-        /// <param name="cpuName"> Name of the CPU. </param>
-        /// <param name="attributes"> A vector of attributes. </param>
-        void SelectTarget(const llvm::Triple& targetTriple, const std::string& cpuArchitecture, const std::string& cpuName, const std::vector<std::string>& attributes);
+        /// <summary> Destructor </summary>
+        ~IRExecutionEngine();
 
         /// <summary> Add an additional module to the execution engine. </summary>
         ///
@@ -69,6 +63,12 @@ namespace emitters
         /// <returns> The function address. </returns>
         uint64_t ResolveFunctionAddress(const std::string& name);
 
+        /// <summary> Set the address of a named function. </summary>
+        ///
+        /// <param name="func"> The function being defined. </param>
+        /// <param name="address"> The address of the function being defined. </param>
+        void DefineFunction(llvm::Function* func, uint64_t address);
+
         /// <summary>
         /// Return a main function that takes no arguments - if one exists. Returns nullptr if not found.
         /// </summary>
@@ -87,6 +87,8 @@ namespace emitters
     private:
         void EnsureEngine();
         void EnsureClockGetTime();
+        void PerformInitialization();
+        void PerformFinalization();
 
         std::unique_ptr<llvm::EngineBuilder> _pBuilder;
         std::unique_ptr<llvm::ExecutionEngine> _pEngine;

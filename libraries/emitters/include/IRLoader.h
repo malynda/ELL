@@ -8,11 +8,12 @@
 #pragma once
 
 // llvm
-#include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Module.h"
-#include "llvm/Support/SourceMgr.h"
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Module.h>
+#include <llvm/Support/SourceMgr.h>
 
 // stl
+#include <memory>
 #include <string>
 
 namespace ell
@@ -23,6 +24,7 @@ namespace emitters
     class IRLoader
     {
     public:
+        /// <summary></summary>
         IRLoader(llvm::LLVMContext& context)
             : _llvmContext(context) {}
 

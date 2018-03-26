@@ -5,14 +5,17 @@
 //  Authors:  Umesh Madan
 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+
 #pragma once
+
+// utilities
 #include "Exception.h"
 
 namespace ell
 {
 namespace emitters
 {
-    ///<summary>A list of error codes thrown by code emitters</summary>
+    ///<summary> A list of error codes thrown by code emitters </summary>
     enum class EmitterError
     {
         // Unexpected error
@@ -31,8 +34,12 @@ namespace emitters
         unaryOperationNotSupported,
         // Binary predicates - operation not supported
         binaryPredicateTypeNotSupported,
+        // Illegal cast operation
+        castNotSupported,
         // Unknown Variable type
         variableTypeNotSupported,
+        // Problem with struct type
+        badStructDefinition,
         // Invalid index into a vector
         indexOutOfRange,
         // Function not found
@@ -41,6 +48,8 @@ namespace emitters
         badFunctionDefinition,
         // function called with incorrect arguments
         badFunctionArguments,
+        // used a null function
+        nullFunction,
         // Write to output stream failed
         writeStreamFailed,
         // Parser error
@@ -58,7 +67,9 @@ namespace emitters
         // Unknown VariableScope
         variableScopeNotSupported,
         // Metadata not found
-        metadataNotFound
+        metadataNotFound,
+        // Unknown target
+        targetNotSupported
     };
 
     using EmitterException = utilities::ErrorCodeException<EmitterError>;

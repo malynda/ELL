@@ -10,7 +10,6 @@
 #include "EmitterException.h"
 #include "IRAssemblyWriter.h"
 #include "IRDiagnosticHandler.h"
-#include "IRExecutionEngine.h"
 #include "IRHeaderWriter.h"
 #include "IRLoader.h"
 #include "IRMetadata.h"
@@ -18,28 +17,25 @@
 
 // utilities
 #include "Files.h"
+#include "Logger.h"
 
 // llvm
-#include "llvm/AsmParser/Parser.h"
-#include "llvm/Bitcode/ReaderWriter.h"
-#include "llvm/IR/TypeBuilder.h"
-#include "llvm/Support/TargetSelect.h"
-#include "llvm/Support/ToolOutputFile.h"
-#include "llvm/Support/raw_os_ostream.h"
-
-// stl
-#include <chrono>
+#include <llvm/AsmParser/Parser.h>
+#include <llvm/Bitcode/ReaderWriter.h>
+#include <llvm/IR/TypeBuilder.h>
+#include <llvm/IR/Verifier.h>
+#include <llvm/Support/FileSystem.h>
+#include <llvm/Support/TargetSelect.h>
+#include <llvm/Support/ToolOutputFile.h>
+#include <llvm/Support/raw_os_ostream.h>
+#include <llvm/Transforms/Utils/ModuleUtils.h>
 
 namespace ell
 {
 namespace emitters
 {
-    namespace
-    {
-        static llvm::LLVMContext g_globalLLVMContext;
-        static bool g_llvmIsInitialized = false;
-        static std::unique_ptr<IRDiagnosticHandler> g_globalDiagnosticHandler = nullptr;
-    }
+    using namespace utilities::logging;
+    using utilities::logging::Log;
 
     //
     // Public methods
@@ -49,27 +45,29 @@ namespace emitters
     // Constructors
     //
 
-    IRModuleEmitter::IRModuleEmitter(const std::string& moduleName)
-        : _llvmContext(g_globalLLVMContext), _emitter(_llvmContext), _runtime(*this)
+    IRModuleEmitter::IRModuleEmitter(const std::string& moduleName, const CompilerOptions& parameters)
+        : _llvmContext(new llvm::LLVMContext()), _emitter(*_llvmContext), _runtime(*this), _threadPool(*this)
     {
         InitializeLLVM();
         InitializeGlobalPassRegistry();
-        _pModule = _emitter.AddModule(moduleName);
-        if (GetCompilerParameters().includeDiagnosticInfo)
+
+        _pModule = _emitter.CreateModule(moduleName);
+
+        SetCompilerOptions(parameters);
+        if (GetCompilerOptions().includeDiagnosticInfo)
         {
             DeclarePrintf();
         }
     }
 
-    IRModuleEmitter::IRModuleEmitter(std::unique_ptr<llvm::Module> pModule)
-        : _llvmContext(g_globalLLVMContext), _emitter(_llvmContext), _runtime(*this), _pModule(std::move(pModule))
+    void IRModuleEmitter::SetCompilerOptions(const CompilerOptions& parameters)
     {
-        InitializeLLVM();
-        InitializeGlobalPassRegistry();
-        if (GetCompilerParameters().includeDiagnosticInfo)
-        {
-            DeclarePrintf();
-        }
+        // Call base class implementation
+        ModuleEmitter::SetCompilerOptions(parameters);
+
+        // Set IR-specific parameters
+        SetTargetTriple(GetCompilerOptions().targetDevice.triple);
+        SetTargetDataLayout(GetCompilerOptions().targetDevice.dataLayout);
     }
 
     //
@@ -83,36 +81,47 @@ namespace emitters
 
     IRFunctionEmitter& IRModuleEmitter::BeginFunction(const std::string& functionName, VariableType returnType)
     {
-        auto currentPos = _emitter.GetCurrentInsertPoint();
-        // assert(currentBlock != nullptr);
-        IRFunctionEmitter newFunction = Function(functionName, returnType, ValueTypeList{}, true);
-        _functionStack.emplace(newFunction, currentPos);
-        return _functionStack.top().first;
+        return BeginFunction(functionName, _emitter.Type(returnType));
     }
 
-    IRFunctionEmitter& IRModuleEmitter::BeginFunction(const std::string& functionName, VariableType returnType, const ValueTypeList& args)
+    IRFunctionEmitter& IRModuleEmitter::BeginFunction(const std::string& functionName, llvm::Type* returnType)
     {
-        auto currentPos = _emitter.GetCurrentInsertPoint();
-        // assert(currentBlock != nullptr);
-        IRFunctionEmitter newFunction = Function(functionName, returnType, args, true);
-        _functionStack.emplace(newFunction, currentPos);
-        return _functionStack.top().first;
+        return BeginFunction(functionName, returnType, NamedVariableTypeList{});
+    }
+
+    IRFunctionEmitter& IRModuleEmitter::BeginFunction(const std::string& functionName, VariableType returnType, const VariableTypeList& args)
+    {
+        return BeginFunction(functionName, _emitter.Type(returnType), _emitter.GetLLVMTypes(args));
     }
 
     IRFunctionEmitter& IRModuleEmitter::BeginFunction(const std::string& functionName, VariableType returnType, const NamedVariableTypeList& args)
     {
+        return BeginFunction(functionName, _emitter.Type(returnType), args);
+    }
+
+    IRFunctionEmitter& IRModuleEmitter::BeginFunction(const std::string& functionName, llvm::Type* returnType, const NamedVariableTypeList& args)
+    {
+        Log() << "Begin emitting IR for function " << functionName << EOL;
         auto currentPos = _emitter.GetCurrentInsertPoint();
-        // assert(currentBlock != nullptr);
-        IRFunctionEmitter newFunction = Function(functionName, returnType, args, true);
+        IRFunctionEmitter newFunction = Function(functionName, returnType, args, false);
         _functionStack.emplace(newFunction, currentPos);
         return _functionStack.top().first;
     }
 
     IRFunctionEmitter& IRModuleEmitter::BeginFunction(const std::string& functionName, llvm::Type* returnType, const std::vector<llvm::Type*>& argTypes)
     {
+        Log() << "Begin emitting IR for function " << functionName << EOL;
         auto currentPos = _emitter.GetCurrentInsertPoint();
-        // assert(currentBlock != nullptr);
-        IRFunctionEmitter newFunction = Function(functionName, returnType, argTypes, true);
+        IRFunctionEmitter newFunction = Function(functionName, returnType, argTypes, false);
+        _functionStack.emplace(newFunction, currentPos);
+        return _functionStack.top().first;
+    }
+
+    IRFunctionEmitter& IRModuleEmitter::BeginFunction(const std::string& functionName, llvm::Type* returnType, const NamedLLVMTypeList& args)
+    {
+        Log() << "Begin emitting IR for function " << functionName << EOL;
+        auto currentPos = _emitter.GetCurrentInsertPoint();
+        IRFunctionEmitter newFunction = Function(functionName, returnType, args, false);
         _functionStack.emplace(newFunction, currentPos);
         return _functionStack.top().first;
     }
@@ -145,19 +154,28 @@ namespace emitters
             auto pTerm = currentFunction.GetCurrentBlock()->getTerminator();
             if (pTerm == nullptr)
             {
+                Log() << "Function " << currentFunction.GetFunctionName() << " does not have a terminator. " << EOL;
                 if (pReturn != nullptr)
                 {
+                    Log() << "Returning non-void value." << EOL;
                     currentFunction.Return(pReturn);
                 }
                 else
                 {
+                    Log() << "Returning void." << EOL;
                     currentFunction.Return();
                 }
             }
+            else
+            {
+                Log() << "Function " << currentFunction.GetFunctionName() << " already has a terminator" << EOL;
+            }
             currentFunction.ConcatRegions();
-            currentFunction.CompleteFunction(GetCompilerParameters().optimize);
+            currentFunction.CompleteFunction(GetCompilerOptions().optimize);
         }
         _emitter.SetCurrentInsertPoint(previousPos);
+
+        Log() << "End emitting of function " << currentFunction.GetFunctionName() << EOL;
     }
 
     IRFunctionEmitter& IRModuleEmitter::GetCurrentFunction()
@@ -180,76 +198,102 @@ namespace emitters
         _functionComments[functionName] = comments;
     }
 
-    std::vector<std::string> IRModuleEmitter::GetMetadata(const std::string& functionName, const std::string& tag)
+    // Module metadata
+    std::vector<std::vector<std::string>> IRModuleEmitter::GetMetadata(const std::string& tag)
     {
-        if (!HasMetadata(functionName, tag))
+        if (!HasMetadata(tag))
+        {
+            throw EmitterException(EmitterError::metadataNotFound);
+        }
+
+        std::vector<std::vector<std::string>> values;
+        const llvm::NamedMDNode* metadata = _pModule->getNamedMetadata(tag);
+        for (const auto& op : metadata->operands()) // op is an MDNode*
+        {
+            std::vector<std::string> opValues;
+            for (const auto& innerOp : op->operands())
+            {
+                opValues.push_back(llvm::cast<llvm::MDString>(innerOp)->getString());
+            }
+            values.push_back(opValues);
+        }
+        return values;
+    }
+
+    // Function metadata
+    std::vector<std::string> IRModuleEmitter::GetFunctionMetadata(const std::string& functionName, const std::string& tag)
+    {
+        if (!HasFunctionMetadata(functionName, tag))
         {
             throw EmitterException(EmitterError::metadataNotFound);
         }
 
         std::vector<std::string> values;
-        if (functionName.length() == 0)
+        auto pFunction = GetFunction(functionName);
+        const llvm::MDNode* metadata = pFunction->getMetadata(tag);
+        for (const auto& op : metadata->operands())
         {
-            // Module metadata
-            const llvm::NamedMDNode* metadata = _pModule->getNamedMetadata(tag);
-            for (const auto& op : metadata->operands())
-            {
-                values.push_back(llvm::cast<llvm::MDString>(op->getOperand(0))->getString());
-            }
-        }
-        else
-        {
-            // Function metadata
-            auto pFunction = GetFunction(functionName);
-            const llvm::MDNode* metadata = pFunction->getMetadata(tag);
-
             // llvm::Function::setMetadata appears to only support single entries?
-            values.push_back(llvm::cast<llvm::MDString>(metadata->getOperand(0))->getString());
+            values.push_back(llvm::cast<llvm::MDString>(op)->getString());
         }
         return values;
     }
 
-    bool IRModuleEmitter::HasMetadata(const std::string& functionName, const std::string& tag)
+    // Module metadata
+    bool IRModuleEmitter::HasMetadata(const std::string& tag)
     {
-        if (functionName.length() == 0)
-        {
-            // Module metadata
-            return (_pModule->getNamedMetadata(tag) != nullptr);
-        }
-        else
-        {
-            // Function metadata
-            auto pFunction = GetFunction(functionName);
-            if (pFunction == nullptr)
-            {
-                throw EmitterException(EmitterError::functionNotFound);
-            }
-            return (pFunction->getMetadata(tag) != nullptr);
-        }
+        return (_pModule->getNamedMetadata(tag) != nullptr);
     }
 
-    void IRModuleEmitter::InsertMetadata(const std::string& functionName, const std::string& tag, const std::string& value)
+    // Function metadata
+    bool IRModuleEmitter::HasFunctionMetadata(const std::string& functionName, const std::string& tag)
     {
-        llvm::Metadata* metadataElements[] = { llvm::MDString::get(_emitter.GetContext(), value) };
+        auto pFunction = GetFunction(functionName);
+        if (pFunction == nullptr)
+        {
+            throw EmitterException(EmitterError::functionNotFound);
+        }
+        return (pFunction->getMetadata(tag) != nullptr);
+    }
+
+    // Module metadata
+    void IRModuleEmitter::InsertMetadata(const std::string& tag, const std::vector<std::string>& values)
+    {
+        std::vector<llvm::Metadata*> metadataElements;
+        for (const auto& value : values)
+        {
+            metadataElements.push_back({ llvm::MDString::get(_emitter.GetContext(), value) });
+        }
+
         auto metadataNode = llvm::MDNode::get(_emitter.GetContext(), metadataElements);
+        auto metadata = _pModule->getOrInsertNamedMetadata(tag);
+        metadata->addOperand(metadataNode);
+    }
 
-        if (functionName.length() == 0)
+    // Function metadata
+    void IRModuleEmitter::InsertFunctionMetadata(const std::string& functionName, const std::string& tag, const std::vector<std::string>& values)
+    {
+        auto pFunction = GetFunction(functionName);
+        if (pFunction == nullptr)
         {
-            // Module metadata
-            auto metadata = _pModule->getOrInsertNamedMetadata(tag);
-            metadata->addOperand(metadataNode);
+            throw EmitterException(EmitterError::functionNotFound);
         }
-        else
-        {
-            // Function metadata
-            auto pFunction = GetFunction(functionName);
-            if (pFunction == nullptr)
-            {
-                throw EmitterException(EmitterError::functionNotFound);
-            }
 
-            pFunction->setMetadata(tag, metadataNode);
+        InsertFunctionMetadata(pFunction, tag, values);
+    }
+
+    void IRModuleEmitter::InsertFunctionMetadata(llvm::Function* function, const std::string& tag, const std::vector<std::string>& values)
+    {
+        assert(function);
+
+        std::vector<llvm::Metadata*> metadataElements;
+        for (const auto& value : values)
+        {
+            metadataElements.push_back({ llvm::MDString::get(_emitter.GetContext(), value) });
         }
+
+        auto metadataNode = llvm::MDNode::get(_emitter.GetContext(), metadataElements);
+        function->setMetadata(tag, metadataNode);
     }
 
     //
@@ -290,6 +334,7 @@ namespace emitters
     {
         auto currentFunction = GetCurrentFunction();
         assert(pValue != nullptr);
+        assert(offset >= 0);
         if (var.IsScalar())
         {
             if (offset > 0)
@@ -300,7 +345,7 @@ namespace emitters
             return;
         }
 
-        if (offset >= var.Dimension())
+        if (static_cast<unsigned>(offset) >= var.Dimension())
         {
             throw EmitterException(EmitterError::indexOutOfRange);
         }
@@ -313,28 +358,24 @@ namespace emitters
 
     llvm::GlobalVariable* IRModuleEmitter::Constant(VariableType type, const std::string& name, double value)
     {
-        return Global(name, _emitter.Type(type), _emitter.Literal(value), true);
-    }
-
-    llvm::GlobalVariable* IRModuleEmitter::ConstantArray(const std::string& name, const std::vector<double>& value)
-    {
-        return Global(name, _emitter.ArrayType(VariableType::Double, value.size()), _emitter.Literal(value), true);
+        return AddGlobal(name, _emitter.Type(type), _emitter.Literal(value), true);
     }
 
     llvm::GlobalVariable* IRModuleEmitter::Global(VariableType type, const std::string& name)
     {
-        return Global(name, _emitter.Type(type), _emitter.Zero(type), false);
+        return AddGlobal(name, _emitter.Type(type), _emitter.Zero(type), false);
     }
 
     llvm::GlobalVariable* IRModuleEmitter::Global(llvm::Type* pType, const std::string& name)
     {
-        return Global(name, pType, nullptr, false);
+        auto initializer = ZeroInitializer(pType);
+        return AddGlobal(name, pType, initializer, false);
     }
 
     llvm::GlobalVariable* IRModuleEmitter::GlobalArray(VariableType type, const std::string& name, const size_t size)
     {
         llvm::ArrayType* pArrayType = _emitter.ArrayType(type, size);
-        return Global(name, pArrayType, InitializeArray(pArrayType), false);
+        return AddGlobal(name, pArrayType, ZeroInitializer(pArrayType), false);
     }
 
     llvm::GlobalVariable* IRModuleEmitter::GlobalArray(const std::string& name, llvm::Type* pType, const size_t size)
@@ -342,42 +383,44 @@ namespace emitters
         assert(pType != nullptr);
 
         llvm::ArrayType* pArrayType = llvm::ArrayType::get(pType, size);
-        return Global(name, pArrayType, InitializeArray(pArrayType), false);
+        return AddGlobal(name, pArrayType, ZeroInitializer(pArrayType), false);
     }
 
-    llvm::GlobalVariable* IRModuleEmitter::GlobalArray(const std::string& name, const std::vector<double>& value)
+    // This function has the actual implementation for all the above Global/GlobalArray() methods
+    llvm::GlobalVariable* IRModuleEmitter::AddGlobal(const std::string& name, llvm::Type* pType, llvm::Constant* pInitial, bool isConst)
     {
-        return Global(name, _emitter.ArrayType(VariableType::Double, value.size()), _emitter.Literal(value), false);
-    }
-
-    // This is the actual implementation --- we should call it something different and/or put it in IREmitter
-    llvm::GlobalVariable* IRModuleEmitter::Global(const std::string& name, llvm::Type* pType, llvm::Constant* pInitial, bool isConst)
-    {
-        return new llvm::GlobalVariable(*GetLLVMModule(), pType, isConst, llvm::GlobalValue::InternalLinkage, pInitial, name); // TODO: make sure we really want to return a new'd pointer
+        _pModule->getOrInsertGlobal(name, pType);
+        auto global = _pModule->getNamedGlobal(name);
+        global->setInitializer(pInitial);
+        global->setConstant(isConst);
+        global->setExternallyInitialized(false);
+        global->setLinkage(llvm::GlobalValue::LinkageTypes::InternalLinkage);
+        assert(llvm::isa<llvm::GlobalVariable>(global));
+        return llvm::cast<llvm::GlobalVariable>(global);
     }
 
     //
     // Functions
     //
 
-    void IRModuleEmitter::DeclareFunction(const std::string& name, VariableType returnType)
+    llvm::Function* IRModuleEmitter::DeclareFunction(const std::string& name, VariableType returnType)
     {
-        _emitter.DeclareFunction(GetLLVMModule(), name, returnType, nullptr);
+        return _emitter.DeclareFunction(GetLLVMModule(), name, returnType);
     }
 
-    void IRModuleEmitter::DeclareFunction(const std::string& name, VariableType returnType, const ValueTypeList& arguments)
+    llvm::Function* IRModuleEmitter::DeclareFunction(const std::string& name, VariableType returnType, const VariableTypeList& arguments)
     {
-        _emitter.DeclareFunction(GetLLVMModule(), name, returnType, &arguments);
+        return _emitter.DeclareFunction(GetLLVMModule(), name, returnType, arguments);
     }
 
-    void IRModuleEmitter::DeclareFunction(const std::string& name, VariableType returnType, const NamedVariableTypeList& arguments)
+    llvm::Function* IRModuleEmitter::DeclareFunction(const std::string& name, VariableType returnType, const NamedVariableTypeList& arguments)
     {
-        _emitter.DeclareFunction(GetLLVMModule(), name, returnType, arguments);
+        return _emitter.DeclareFunction(GetLLVMModule(), name, returnType, arguments);
     }
 
-    void IRModuleEmitter::DeclareFunction(const std::string& name, llvm::FunctionType* functionType)
+    llvm::Function* IRModuleEmitter::DeclareFunction(const std::string& name, llvm::FunctionType* functionType)
     {
-        _emitter.DeclareFunction(GetLLVMModule(), name, functionType);
+        return _emitter.DeclareFunction(GetLLVMModule(), name, functionType);
     }
 
     IRFunctionEmitter IRModuleEmitter::Function(const std::string& name, VariableType returnType, bool isPublic)
@@ -385,14 +428,14 @@ namespace emitters
         return Function(name, returnType, nullptr, isPublic);
     }
 
-    IRFunctionEmitter IRModuleEmitter::Function(const std::string& name, VariableType returnType, const ValueTypeList& arguments, bool isPublic)
+    IRFunctionEmitter IRModuleEmitter::Function(const std::string& name, VariableType returnType, const VariableTypeList& arguments, bool isPublic)
     {
         return Function(name, returnType, &arguments, isPublic);
     }
 
     IRFunctionEmitter IRModuleEmitter::Function(const std::string& name, VariableType returnType, const std::initializer_list<VariableType>& arguments, bool isPublic)
     {
-        ValueTypeList valueTypeList = arguments;
+        VariableTypeList valueTypeList = arguments;
         return Function(name, returnType, &valueTypeList, isPublic);
     }
 
@@ -408,7 +451,19 @@ namespace emitters
         return IRFunctionEmitter(this, &_emitter, pFunction, arguments, name);
     }
 
-    IRFunctionEmitter IRModuleEmitter::Function(const std::string& name, VariableType returnType, const ValueTypeList* pArguments, bool isPublic)
+    IRFunctionEmitter IRModuleEmitter::Function(const std::string& name, llvm::Type* returnType, const NamedVariableTypeList& arguments, bool isPublic)
+    {
+        llvm::Function* pFunction = _emitter.Function(GetLLVMModule(), name, returnType, Linkage(isPublic), arguments);
+        if (pFunction == nullptr)
+        {
+            throw EmitterException(EmitterError::functionNotFound);
+        }
+        // TODO: put the above IREmitter call in the IRFunctionEmitter constructor
+
+        return IRFunctionEmitter(this, &_emitter, pFunction, arguments, name);
+    }
+
+    IRFunctionEmitter IRModuleEmitter::Function(const std::string& name, VariableType returnType, const VariableTypeList* pArguments, bool isPublic)
     {
         llvm::Function* pFunction = _emitter.Function(GetLLVMModule(), name, returnType, Linkage(isPublic), pArguments);
         if (pFunction == nullptr)
@@ -428,6 +483,16 @@ namespace emitters
         return IRFunctionEmitter(this, &_emitter, pFunction, name);
     }
 
+    IRFunctionEmitter IRModuleEmitter::Function(const std::string& name, llvm::Type* returnType, const NamedLLVMTypeList& arguments, bool isPublic)
+    {
+        llvm::Function* pFunction = _emitter.Function(GetLLVMModule(), name, returnType, Linkage(isPublic), arguments);
+        if (pFunction == nullptr)
+        {
+            throw EmitterException(EmitterError::functionNotFound);
+        }
+        return IRFunctionEmitter(this, &_emitter, pFunction, name);
+    }
+
     bool IRModuleEmitter::HasFunction(const std::string& name)
     {
         return GetLLVMModule()->getFunction(name) != nullptr;
@@ -440,7 +505,13 @@ namespace emitters
 
     llvm::Function* IRModuleEmitter::GetIntrinsic(llvm::Intrinsic::ID id, const std::initializer_list<VariableType>& arguments)
     {
-        ValueTypeList valueTypeList = arguments;
+        VariableTypeList valueTypeList = arguments;
+        return _emitter.GetIntrinsic(GetLLVMModule(), id, valueTypeList);
+    }
+
+    llvm::Function* IRModuleEmitter::GetIntrinsic(llvm::Intrinsic::ID id, const std::initializer_list<LLVMType>& arguments)
+    {
+        LLVMTypeList valueTypeList = arguments;
         return _emitter.GetIntrinsic(GetLLVMModule(), id, valueTypeList);
     }
 
@@ -448,15 +519,66 @@ namespace emitters
     // Types
     //
 
-    llvm::StructType* IRModuleEmitter::Struct(const std::string& name, const std::initializer_list<VariableType>& fields)
+    llvm::StructType* IRModuleEmitter::GetOrCreateStruct(const std::string& name, const NamedVariableTypeList& fields)
     {
-        ValueTypeList valueTypeList = fields;
-        return _emitter.Struct(name, valueTypeList);
+        NamedLLVMTypeList llvmFields;
+        for(auto& field: fields)
+        {
+            llvmFields.emplace_back(field.first, _emitter.Type(field.second));
+        }
+        return GetOrCreateStruct(name, llvmFields);
     }
 
-    llvm::StructType* IRModuleEmitter::Struct(const std::string& name, const std::vector<VariableType>& fields)
+    llvm::StructType* IRModuleEmitter::GetOrCreateStruct(const std::string& name, const NamedLLVMTypeList& fields)
     {
-        return _emitter.Struct(name, fields);
+        std::vector<std::string> fieldNames;
+        std::vector<LLVMType> types;
+        for (const auto& field : fields)
+        {
+            fieldNames.push_back(field.first);
+            types.push_back(field.second);
+        }
+
+        auto structType = GetOrCreateStruct(name, types);
+        auto tag = GetStructFieldsTagName(structType);
+        InsertMetadata(tag, fieldNames);
+        return structType;
+    }
+
+    llvm::StructType* IRModuleEmitter::GetOrCreateStruct(const std::string& name, const LLVMTypeList& fields)
+    {
+        if (auto structType = _emitter.GetStruct(name))
+        {
+            // Check that existing struct fields match the ones we're trying to create
+            auto structFields = structType->elements();
+            if(structFields.size() != fields.size())
+            {
+                throw EmitterException(EmitterError::badStructDefinition, "Fields don't match existing struct of same name");
+            }
+            else
+            {
+                for(size_t fieldIndex = 0; fieldIndex < fields.size(); ++fieldIndex)
+                {
+                    if(fields[fieldIndex] != structFields[fieldIndex])
+                    {
+                        throw EmitterException(EmitterError::badStructDefinition, "Fields don't match existing struct of same name");
+                    }
+                }
+            }
+            return structType;
+        }
+
+        return _emitter.DeclareStruct(name, fields);
+    }
+
+    llvm::StructType* IRModuleEmitter::GetAnonymousStructType(const LLVMTypeList& fieldTypes, bool packed)
+    {
+        return _emitter.GetAnonymousStructType(fieldTypes, packed);
+    }
+
+    llvm::StructType* IRModuleEmitter::GetStruct(const std::string& name)
+    {
+        return _emitter.GetStruct(name);
     }
 
     //
@@ -466,6 +588,18 @@ namespace emitters
     void IRModuleEmitter::WriteToFile(const std::string& filePath, ModuleOutputFormat format)
     {
         MachineCodeOutputOptions options;
+        auto CompilerOptions = GetCompilerOptions();
+        options.targetDevice = CompilerOptions.targetDevice;
+        if (CompilerOptions.optimize)
+        {
+            options.optimizationLevel = OptimizationLevel::Aggressive;
+        }
+        // Other params to possibly set:
+        //   bool verboseOutput = false;
+        //   bool verifyModule = false;
+        //   FloatABIType floatABI = FloatABIType::Default;
+        //   FloatFusionMode floatFusionMode = FloatFusionMode::Standard;
+
         switch (format)
         {
             case ModuleOutputFormat::assembly:
@@ -521,6 +655,18 @@ namespace emitters
     void IRModuleEmitter::WriteToStream(std::ostream& stream, ModuleOutputFormat format)
     {
         MachineCodeOutputOptions options;
+        auto CompilerOptions = GetCompilerOptions();
+        options.targetDevice = CompilerOptions.targetDevice;
+        if (CompilerOptions.optimize)
+        {
+            options.optimizationLevel = OptimizationLevel::Aggressive;
+        }
+        // Other params to possibly set:
+        //   bool verboseOutput = false;
+        //   bool verifyModule = false;
+        //   FloatABIType floatABI = FloatABIType::Default;
+        //   FloatFusionMode floatFusionMode = FloatFusionMode::Standard;
+
         WriteToStream(stream, format, options);
     }
 
@@ -543,22 +689,21 @@ namespace emitters
 
     void IRModuleEmitter::WriteToLLVMStream(llvm::raw_ostream& os, ModuleOutputFormat format, MachineCodeOutputOptions options)
     {
-        const auto& params = GetCompilerParameters();
+        const auto& params = GetCompilerOptions();
 
-        // TODO: make this code nicer:
-        if (options.targetDevice.triple == "")
+        if (options.targetDevice.triple.empty())
         {
             options.targetDevice.triple = params.targetDevice.triple;
         }
 
-        if (options.targetDevice.cpu == "")
+        if (options.targetDevice.cpu.empty())
         {
-            options.targetDevice.triple = params.targetDevice.cpu;
+            options.targetDevice.cpu = params.targetDevice.cpu;
         }
 
-        if (options.targetDevice.features == "")
+        if (options.targetDevice.features.empty())
         {
-            options.targetDevice.triple = params.targetDevice.features;
+            options.targetDevice.features = params.targetDevice.features;
         }
 
         // optimization level
@@ -601,6 +746,7 @@ namespace emitters
     void IRModuleEmitter::WriteHeader(std::ostream& os)
     {
         WriteModuleHeader(os, *this);
+        WriteModuleCppWrapper(os, *this);
     }
 
     //
@@ -649,18 +795,6 @@ namespace emitters
         DeclareFunction("free", VariableType::Void, { VariableType::BytePointer });
     }
 
-    template <>
-    void IRModuleEmitter::DeclareGetClockMilliseconds<std::chrono::steady_clock>()
-    {
-        DeclareFunction("ELL_GetSteadyClockMilliseconds", VariableType::Double);
-    }
-
-    template <>
-    void IRModuleEmitter::DeclareGetClockMilliseconds<std::chrono::system_clock>()
-    {
-        DeclareFunction("ELL_GetSystemClockMilliseconds", VariableType::Double);
-    }
-
     IRFunctionEmitter IRModuleEmitter::BeginMainDebugFunction()
     {
         DeclarePrintf();
@@ -669,8 +803,20 @@ namespace emitters
 
     IRDiagnosticHandler& IRModuleEmitter::GetDiagnosticHandler()
     {
-        return *g_globalDiagnosticHandler;
+        return *_diagnosticHandler;
     }
+
+    bool IRModuleEmitter::CheckForErrors()
+    {
+        return llvm::verifyModule(*_pModule);
+    }
+
+    bool IRModuleEmitter::CheckForErrors(std::ostream& stream)
+    {
+        llvm::raw_os_ostream out(stream);
+        return llvm::verifyModule(*_pModule, &out);
+    }
+
 
     void IRModuleEmitter::DebugDump()
     {
@@ -693,6 +839,11 @@ namespace emitters
         GetLLVMModule()->setTargetTriple(triple);
     }
 
+    const llvm::DataLayout& IRModuleEmitter::GetTargetDataLayout() const
+    {
+        return GetLLVMModule()->getDataLayout();
+    }
+
     void IRModuleEmitter::SetTargetDataLayout(const std::string& dataLayout)
     {
         GetLLVMModule()->setDataLayout(llvm::DataLayout(dataLayout));
@@ -706,20 +857,43 @@ namespace emitters
     //
     // Metadata
     //
-
-    void IRModuleEmitter::IncludeInHeader(const std::string& functionName)
-    {
-        InsertMetadata(functionName, c_declareInHeaderTagName);
-    }
-
     void IRModuleEmitter::IncludeTypeInHeader(const std::string& typeName)
     {
-        InsertMetadata("", c_declareInHeaderTagName, typeName);
+        InsertMetadata(c_declareTypeInHeaderTagName, { typeName });
     }
 
     void IRModuleEmitter::IncludeInCallbackInterface(const std::string& functionName, const std::string& nodeName)
     {
-        InsertMetadata(functionName, c_callbackFunctionTagName, nodeName);
+        // We shouldn't actually have to set this linkage to external because:
+        // * All usages are preceded by IncludeInHeader, which already does external linkage
+        // * We should be using this for just declarations that the user provides as a callback
+        // That said, leaving it in for now until usage proves to be counter-productive.
+        auto function = GetFunction(functionName);
+        function->setLinkage(llvm::GlobalValue::LinkageTypes::ExternalLinkage);
+        InsertFunctionMetadata(function, c_callbackFunctionTagName, { nodeName });
+    }
+
+    //
+    // Module initialization / finalization
+    //
+    void IRModuleEmitter::AddInitializationFunction(llvm::Function* function, int priority, llvm::Constant* forData)
+    {
+        llvm::appendToGlobalCtors(*GetLLVMModule(), function, priority, forData);
+    }
+
+    void IRModuleEmitter::AddInitializationFunction(IRFunctionEmitter& function, int priority, llvm::Constant* forData)
+    {
+        AddInitializationFunction(function.GetFunction(), priority, forData);
+    }
+
+    void IRModuleEmitter::AddFinalizationFunction(llvm::Function* function, int priority, llvm::Constant* forData)
+    {
+        llvm::appendToGlobalDtors(*GetLLVMModule(), function, priority, forData);
+    }
+
+    void IRModuleEmitter::AddFinalizationFunction(IRFunctionEmitter& function, int priority, llvm::Constant* forData)
+    {
+        AddFinalizationFunction(function.GetFunction(), priority, forData);
     }
 
     //
@@ -745,6 +919,8 @@ namespace emitters
                 return _globals.Get(name);
 
             case VariableScope::local:
+                return GetCurrentFunction().GetEmittedVariable(scope, name);
+
             case VariableScope::input:
             case VariableScope::output:
                 return GetCurrentFunction().GetEmittedVariable(scope, name);
@@ -780,7 +956,7 @@ namespace emitters
         return isPublic ? llvm::Function::LinkageTypes::ExternalLinkage : llvm::Function::LinkageTypes::InternalLinkage;
     }
 
-    llvm::ConstantAggregateZero* IRModuleEmitter::InitializeArray(llvm::ArrayType* pType)
+    llvm::ConstantAggregateZero* IRModuleEmitter::ZeroInitializer(llvm::Type* pType)
     {
         assert(pType != nullptr);
         return llvm::ConstantAggregateZero::get(pType);
@@ -791,11 +967,6 @@ namespace emitters
     //
     void IRModuleEmitter::InitializeLLVM()
     {
-        if (g_llvmIsInitialized)
-        {
-            return;
-        }
-
         // All targets
         llvm::InitializeAllTargetInfos();
         llvm::InitializeAllTargets();
@@ -811,7 +982,7 @@ namespace emitters
         llvm::InitializeNativeTargetDisassembler();
 
         // Create a diagnostic handler to record if there was an error
-        g_globalDiagnosticHandler = std::unique_ptr<IRDiagnosticHandler>(new IRDiagnosticHandler(g_globalLLVMContext));
+        _diagnosticHandler = std::unique_ptr<IRDiagnosticHandler>(new IRDiagnosticHandler(*_llvmContext));
     }
 
     llvm::PassRegistry* IRModuleEmitter::InitializeGlobalPassRegistry()
@@ -835,5 +1006,17 @@ namespace emitters
 
         return registry;
     }
+
+    //
+    // Functions
+    //
+
+    IRModuleEmitter MakeHostModuleEmitter(const std::string moduleName)
+    {
+        CompilerOptions parameters;
+        parameters.targetDevice.deviceName = "host";
+        return {moduleName, parameters};
+    }
+
 }
 }

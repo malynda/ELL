@@ -21,10 +21,11 @@
 #include "TypeName.h"
 
 // llvm
-#include "llvm/IR/Value.h"
+#include <llvm/IR/Value.h>
 
 // stl
 #include <string>
+#include <vector>
 
 namespace ell
 {
@@ -42,12 +43,12 @@ namespace model
         void CompileNode(MapCompiler& compiler);
 
         /// <summary> Indicates if this node is able to compile itself to code. </summary>
-        virtual bool IsCompilable() const { return true; }
+        bool IsCompilable(const MapCompiler* compiler) const override { return true; }
 
     protected:
         CompilableNode(const std::vector<InputPortBase*>& inputs, const std::vector<OutputPortBase*>& outputs)
             : Node(inputs, outputs) {}
-        virtual ~CompilableNode() = default;
+        ~CompilableNode() override = default;
 
         // Compile function necessary to override in subclasses
         virtual void Compile(IRMapCompiler& compiler, emitters::IRFunctionEmitter& function);

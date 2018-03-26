@@ -13,82 +13,79 @@ namespace ell
 {
 namespace emitters
 {
-    namespace
+    TypedOperator GetFloatOperator(BinaryOperationType operation)
     {
-        TypedOperator GetFloatOperator(BinaryOperationType operation)
+        switch (operation)
         {
-            switch (operation)
-            {
-                case BinaryOperationType::add:
-                    return TypedOperator::addFloat;
-                case BinaryOperationType::subtract:
-                    return TypedOperator::subtractFloat;
-                case BinaryOperationType::coordinatewiseMultiply:
-                    return TypedOperator::multiplyFloat;
-                case BinaryOperationType::coordinatewiseDivide:
-                    return TypedOperator::divideFloat;
-                default:
-                    throw EmitterException(EmitterError::binaryOperationTypeNotSupported);
-            }
+        case BinaryOperationType::add:
+            return TypedOperator::addFloat;
+        case BinaryOperationType::subtract:
+            return TypedOperator::subtractFloat;
+        case BinaryOperationType::coordinatewiseMultiply:
+            return TypedOperator::multiplyFloat;
+        case BinaryOperationType::coordinatewiseDivide:
+            return TypedOperator::divideFloat;
+        default:
+            throw EmitterException(EmitterError::binaryOperationTypeNotSupported);
         }
+    }
 
-        TypedOperator GetIntegerOperator(BinaryOperationType operation)
+    TypedOperator GetIntegerOperator(BinaryOperationType operation)
+    {
+        switch (operation)
         {
-            switch (operation)
-            {
-                case BinaryOperationType::add:
-                    return TypedOperator::add;
-                case BinaryOperationType::subtract:
-                    return TypedOperator::subtract;
-                case BinaryOperationType::coordinatewiseMultiply:
-                    return TypedOperator::multiply;
-                case BinaryOperationType::coordinatewiseDivide:
-                    return TypedOperator::divideSigned;
-                default:
-                    throw EmitterException(EmitterError::binaryOperationTypeNotSupported);
-            }
+        case BinaryOperationType::add:
+            return TypedOperator::add;
+        case BinaryOperationType::subtract:
+            return TypedOperator::subtract;
+        case BinaryOperationType::coordinatewiseMultiply:
+            return TypedOperator::multiply;
+        case BinaryOperationType::coordinatewiseDivide:
+            return TypedOperator::divideSigned;
+        default:
+            throw EmitterException(EmitterError::binaryOperationTypeNotSupported);
         }
+    }
 
-        TypedComparison GetFloatComparison(BinaryPredicateType predicate)
+    TypedComparison GetFloatComparison(BinaryPredicateType predicate)
+    {
+        switch (predicate)
         {
-            switch (predicate)
-            {
-                case BinaryPredicateType::equal:
-                    return TypedComparison::equalsFloat;
-                case BinaryPredicateType::notEqual:
-                    return TypedComparison::notEqualsFloat;
-                case BinaryPredicateType::greater:
-                    return TypedComparison::greaterThanFloat;
-                case BinaryPredicateType::greaterOrEqual:
-                    return TypedComparison::greaterThanOrEqualsFloat;
-                case BinaryPredicateType::less:
-                    return TypedComparison::lessThanFloat;
-                case BinaryPredicateType::lessOrEqual:
-                    return TypedComparison::lessThanOrEqualsFloat;
-                default:
-                    throw EmitterException(EmitterError::binaryOperationTypeNotSupported);
-            }
+        case BinaryPredicateType::equal:
+            return TypedComparison::equalsFloat;
+        case BinaryPredicateType::notEqual:
+            return TypedComparison::notEqualsFloat;
+        case BinaryPredicateType::greater:
+            return TypedComparison::greaterThanFloat;
+        case BinaryPredicateType::greaterOrEqual:
+            return TypedComparison::greaterThanOrEqualsFloat;
+        case BinaryPredicateType::less:
+            return TypedComparison::lessThanFloat;
+        case BinaryPredicateType::lessOrEqual:
+            return TypedComparison::lessThanOrEqualsFloat;
+        default:
+            throw EmitterException(EmitterError::binaryOperationTypeNotSupported);
         }
+    }
 
-        TypedComparison GetIntegerComparison(BinaryPredicateType predicate)
+    TypedComparison GetIntegerComparison(BinaryPredicateType predicate)
+    {
+        switch (predicate)
         {
-            switch (predicate)
-            {
-                case BinaryPredicateType::equal:
-                    return TypedComparison::equals;
-                case BinaryPredicateType::notEqual:
-                    return TypedComparison::notEquals;
-                case BinaryPredicateType::greater:
-                    return TypedComparison::greaterThan;
-                case BinaryPredicateType::greaterOrEqual:
-                    return TypedComparison::greaterThanOrEquals;
-                case BinaryPredicateType::less:
-                    return TypedComparison::lessThan;
-                case BinaryPredicateType::lessOrEqual:
-                    return TypedComparison::lessThanOrEquals;
-                default:
-                    throw EmitterException(EmitterError::binaryOperationTypeNotSupported);
-            }
+        case BinaryPredicateType::equal:
+            return TypedComparison::equals;
+        case BinaryPredicateType::notEqual:
+            return TypedComparison::notEquals;
+        case BinaryPredicateType::greater:
+            return TypedComparison::greaterThan;
+        case BinaryPredicateType::greaterOrEqual:
+            return TypedComparison::greaterThanOrEquals;
+        case BinaryPredicateType::less:
+            return TypedComparison::lessThan;
+        case BinaryPredicateType::lessOrEqual:
+            return TypedComparison::lessThanOrEquals;
+        default:
+            throw EmitterException(EmitterError::binaryOperationTypeNotSupported);
         }
     }
 
@@ -121,14 +118,14 @@ namespace emitters
     {
         switch (operation)
         {
-            case BinaryOperationType::logicalAnd:
-                return TypedOperator::logicalAnd;
-            case BinaryOperationType::logicalOr:
-                return TypedOperator::logicalOr;
-            case BinaryOperationType::logicalXor:
-                return TypedOperator::logicalXor;
-            default:
-                throw EmitterException(EmitterError::binaryOperationTypeNotSupported);
+        case BinaryOperationType::logicalAnd:
+            return TypedOperator::logicalAnd;
+        case BinaryOperationType::logicalOr:
+            return TypedOperator::logicalOr;
+        case BinaryOperationType::logicalXor:
+            return TypedOperator::logicalXor;
+        default:
+            throw EmitterException(EmitterError::binaryOperationTypeNotSupported);
         }
     }
 
@@ -154,6 +151,18 @@ namespace emitters
     TypedComparison GetComparison<int64_t>(BinaryPredicateType predicate)
     {
         return GetIntegerComparison(predicate);
+    }
+
+    template <>
+    VariableType GetVariableType<void>()
+    {
+        return VariableType::Void;
+    }
+
+    template <>
+    VariableType GetVariableType<void*>()
+    {
+        return VariableType::VoidPointer;
     }
 
     template <>
@@ -280,24 +289,24 @@ namespace emitters
     {
         switch (type)
         {
-            case VariableType::Void:
-                return VariableType::VoidPointer;
-            case VariableType::Byte:
-                return VariableType::BytePointer;
-            case VariableType::Short:
-                return VariableType::ShortPointer;
-            case VariableType::Int32:
-                return VariableType::Int32Pointer;
-            case VariableType::Int64:
-                return VariableType::Int64Pointer;
-            case VariableType::Float:
-                return VariableType::FloatPointer;
-            case VariableType::Double:
-                return VariableType::DoublePointer;
-            case VariableType::Char8:
-                return VariableType::Char8Pointer;
-            default:
-                break;
+        case VariableType::Void:
+            return VariableType::VoidPointer;
+        case VariableType::Byte:
+            return VariableType::BytePointer;
+        case VariableType::Short:
+            return VariableType::ShortPointer;
+        case VariableType::Int32:
+            return VariableType::Int32Pointer;
+        case VariableType::Int64:
+            return VariableType::Int64Pointer;
+        case VariableType::Float:
+            return VariableType::FloatPointer;
+        case VariableType::Double:
+            return VariableType::DoublePointer;
+        case VariableType::Char8:
+            return VariableType::Char8Pointer;
+        default:
+            break;
         }
         return type;
     }
@@ -327,6 +336,12 @@ namespace emitters
     }
 
     template <>
+    TypedOperator GetAddForValueType<bool>()
+    {
+        throw EmitterException(EmitterError::binaryOperationTypeNotSupported);
+    }
+
+    template <>
     TypedOperator GetSubtractForValueType<float>()
     {
         return TypedOperator::subtractFloat;
@@ -348,6 +363,12 @@ namespace emitters
     TypedOperator GetSubtractForValueType<int64_t>()
     {
         return TypedOperator::subtract;
+    }
+
+    template <>
+    TypedOperator GetSubtractForValueType<bool>()
+    {
+        throw EmitterException(EmitterError::binaryOperationTypeNotSupported);
     }
 
     template <>
@@ -375,6 +396,12 @@ namespace emitters
     }
 
     template <>
+    TypedOperator GetMultiplyForValueType<bool>()
+    {
+        throw EmitterException(EmitterError::binaryOperationTypeNotSupported);
+    }
+
+    template <>
     TypedOperator GetDivideForValueType<float>()
     {
         return TypedOperator::divideFloat;
@@ -399,6 +426,12 @@ namespace emitters
     }
 
     template <>
+    TypedOperator GetDivideForValueType<bool>()
+    {
+        throw EmitterException(EmitterError::binaryOperationTypeNotSupported);
+    }
+
+    template <>
     TypedOperator GetModForValueType<int>()
     {
         return TypedOperator::moduloSigned;
@@ -408,15 +441,15 @@ namespace emitters
     {
         switch (type)
         {
-            case VariableType::Short:
-            case VariableType::Int32:
-            case VariableType::Int64:
-            case VariableType::Float:
-            case VariableType::Double:
-                return true;
+        case VariableType::Short:
+        case VariableType::Int32:
+        case VariableType::Int64:
+        case VariableType::Float:
+        case VariableType::Double:
+            return true;
 
-            default:
-                return false;
+        default:
+            return false;
         }
     }
 }

@@ -2,7 +2,7 @@
 # OpenBLASSetup
 #
 
-# Centralized place to define OpenBLAS variables 
+# Centralized place to define OpenBLAS variables
 # Sets the following variables:
 #
 # General information:
@@ -49,8 +49,45 @@ endmacro()
 
 set(BLAS_INCLUDE_SEARCH_PATHS )
 set(BLAS_LIB_SEARCH_PATHS )
-set(BLAS_LIB_NAMES cblas openblas libopenblas.dll.a)
+set(BLAS_LIB_NAMES libopenblas.dll.a libopenblas.a openblas cblas)
 
+if(NOT WIN32)
+    ## Note: libopenblas installs on ubuntu in /usr/lib and /usr/include or /opt/OpenBLAS if it's manually built
+    ## Note: libopenblas installs on openSUSE in /usr/lib64 and /usr/include/openblas
+    set(BLAS_INCLUDE_SEARCH_PATHS
+        /opt/OpenBLAS/include
+        /System/Library/Frameworks/Accelerate.framework/Versions/Current/Frameworks/vecLib.framework/Versions/Current/Headers/
+        /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/Accelerate.framework/Frameworks/vecLib.framework/Headers/
+        /usr/local/Cellar/openblas/0.2.20_1/include
+        /usr/include
+        /usr/local/include
+        /usr/include/openblas
+    )
+
+    set(BLAS_LIB_SEARCH_PATHS
+        /opt/OpenBLAS/lib
+        /usr/local/Cellar/openblas/0.2.20_1/lib
+        /usr/lib64/atlas-sse3
+        /usr/lib64/atlas
+        /usr/lib64
+        /usr/local/lib64/atlas
+        /usr/local/lib64
+        /usr/lib/atlas-sse3
+        /usr/lib/atlas-sse2
+        /usr/lib/atlas-sse
+        /usr/lib/atlas-3dnow
+        /usr/lib/atlas
+        /usr/lib
+        /usr/local/lib/atlas
+        /usr/local/lib
+    )
+endif()
+
+# Unless told otherwise, we're going to only look for OpenBLAS since
+# others may not be compatible
+if(NOT BLA_VENDOR)
+    set(BLA_VENDOR "OpenBLAS")
+endif()
 find_package(BLAS QUIET)
 if(BLAS_FOUND)
     message(STATUS "Blas libraries: ${BLAS_LIBRARIES}")
@@ -64,7 +101,7 @@ else()
         #
         # Haswell: Family 6, model 60, 63, 69
         # Broadwell: Family 6, Model 70, 79 (compatible with Haswell)
-        # Kobylake: Family 6, Model 78 (compatible with Haswell)
+        # Kaby Lake: Family 6, Model 78, 142, 158 (compatible with Haswell)
         # Sandybridge: Family 6, model 42, 45
         # Ivybridge: Family 6, model 58 (compatible with Sandybridge)
         # Skylake: Family 6, model 42
@@ -90,8 +127,8 @@ else()
                     set(processor_generation "haswell")
                 elseif(processor_model EQUAL 79)
                     set(processor_generation "haswell")  # technically this is broadwell, but it is compatible with haswell.
-                elseif (processor_model EQUAL 78)
-                    set(processor_generation "haswell") # technically this is Koby Lake, but it is compatible with haswell.
+                elseif (processor_model EQUAL 78 OR processor_model EQUAL 142 OR processor_model EQUAL 158)
+                    set(processor_generation "haswell") # technically this is Kaby Lake, but it is compatible with haswell.
                 elseif(processor_model EQUAL 42 OR processor_model EQUAL 45)
                     set(processor_generation "sandybridge")
                 elseif(processor_model EQUAL 58)
@@ -105,7 +142,7 @@ else()
         else()
             set(processor_generation "${PROCESSOR_HINT}")
         endif()
-        
+
         set(CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES} ".dll.a" ".a")
         set(processor_to_use "")
         get_processor_mapping(processor_to_use ${processor_generation})
@@ -117,26 +154,13 @@ else()
             set(BLAS_DLLS libopenblas.dll libgcc_s_seh-1.dll libgfortran-3.dll libquadmath-0.dll)
             set(BLAS_DLL_DIR ${BLAS_PACKAGE_DIR}/bin)
             set(BLAS_INCLUDE_SEARCH_PATHS ${BLAS_PACKAGE_DIR}/include/)
-            set(BLAS_LIB_SEARCH_PATHS ${BLAS_PACKAGE_DIR}/lib/)    
+            set(BLAS_LIB_SEARCH_PATHS ${BLAS_PACKAGE_DIR}/lib/)
         else()
             message(STATUS "Unknown processor, disabling OpenBLAS")
         endif()
     endif()
 endif()
 
-if(NOT WIN32)
-    ## Note: libopenblas installs on ubuntu in /usr/lib and /usr/include
-    set(BLAS_INCLUDE_SEARCH_PATHS
-        /System/Library/Frameworks/Accelerate.framework/Versions/Current/Frameworks/vecLib.framework/Versions/Current/Headers/
-        /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/Accelerate.framework/Frameworks/vecLib.framework/Headers/
-        /usr/include
-        /usr/local/include
-    )
-
-    set(BLAS_LIB_SEARCH_PATHS
-        /usr/lib64/atlas-sse3 /usr/lib64/atlas /usr/lib64 /usr/local/lib64/atlas /usr/local/lib64 /usr/lib/atlas-sse3 /usr/lib/atlas-sse2 /usr/lib/atlas-sse /usr/lib/atlas-3dnow /usr/lib/atlas /usr/lib /usr/local/lib/atlas /usr/local/lib
-    )
-endif()
 
 find_path(BLAS_INCLUDE_DIRS cblas.h
     PATHS ${BLAS_INCLUDE_SEARCH_PATHS} ${BLAS_INCLUDE_DIRS}

@@ -10,34 +10,34 @@ namespace ell
 {
 namespace nodes
 {
-    // Default constructor for type registration
-    template <typename ValueType, SamplingFunction<ValueType> getSample>
-    SourceNode<ValueType, getSample>::SourceNode()
-        : CompilableNode({ &_input }, { &_output }), _input(this, {}, inputPortName), _output(this, outputPortName, 0), _samplingFunctionName("")
+    template <typename ValueType>
+    SourceNode<ValueType>::SourceNode()
+        : SourceNode({}, math::TensorShape{ 0, 0, 0 }, "", nullptr)
     {
     }
 
-    template <typename ValueType, SamplingFunction<ValueType> getSample>
-    SourceNode<ValueType, getSample>::SourceNode(
-        const model::PortElements<TimeTickType>& input, size_t outputSize)
-        : SourceNode(input, outputSize, "SourceNode_SamplingFunction")
+    template <typename ValueType>
+    SourceNode<ValueType>::SourceNode(const model::PortElements<nodes::TimeTickType>& input, size_t inputVectorSize, const std::string& sourceFunctionName, SourceFunction<ValueType> source)
+        : SourceNode(input, math::TensorShape{ inputVectorSize, 1, 1 }, sourceFunctionName, source)
     {
     }
 
-    template <typename ValueType, SamplingFunction<ValueType> getSample>
-    SourceNode<ValueType, getSample>::SourceNode(
-        const model::PortElements<TimeTickType>& input, size_t outputSize, const std::string& samplingFunctionName)
-        : CompilableNode({ &_input }, { &_output }), _input(this, input, inputPortName), _output(this, outputPortName, outputSize), _samplingFunctionName(samplingFunctionName)
+    template <typename ValueType>
+    SourceNode<ValueType>::SourceNode(const model::PortElements<nodes::TimeTickType>& input, const math::TensorShape& shape, const std::string& sourceFunctionName, SourceFunction<ValueType> source)
+        : model::SourceNodeBase(_input, _output, shape, sourceFunctionName),
+        _input(this, input, defaultInputPortName),
+        _output(this, defaultOutputPortName, shape.Size()),
+        _source(source == nullptr ? [](auto&){ return false; } : source)
     {
-        _bufferedSample.resize(outputSize);
+        _bufferedSample.resize(shape.Size());
     }
 
-    template <typename ValueType, SamplingFunction<ValueType> getSample>
-    void SourceNode<ValueType, getSample>::Compute() const
+    template <typename ValueType>
+    void SourceNode<ValueType>::Compute() const
     {
         auto sampleTime = _input.GetValue(0);
 
-        if ((sampleTime != _bufferedSampleTime) && getSample(_bufferedSample))
+        if (_source(_bufferedSample))
         {
             // Determine if the sample time differs from the current time
             auto currentTime = _input.GetValue(1);
@@ -52,51 +52,40 @@ namespace nodes
         _output.SetOutput(_bufferedSample);
     }
 
-    template <typename ValueType, SamplingFunction<ValueType> getSample>
-    void SourceNode<ValueType, getSample>::Compile(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function)
+    template <typename ValueType>
+    void SourceNode<ValueType>::Compile(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function)
     {
         llvm::Value* pInput = compiler.EnsurePortEmitted(input);
-        llvm::Value* pResult = compiler.EnsurePortEmitted(output);
+        compiler.EnsurePortEmitted(output);
+        auto& module = function.GetModule();
 
         // Globals
-        emitters::Variable* pBufferedSampleTimeVar = function.GetModule().Variables().AddVariable<emitters::InitializedScalarVariable<TimeTickType>>(emitters::VariableScope::global, _bufferedSampleTime);
-        emitters::Variable* pBufferedSampleVar = function.GetModule().Variables().AddVariable<emitters::InitializedVectorVariable<ValueType>>(emitters::VariableScope::global, output.Size());
-        llvm::Value* pBufferedSampleTime = function.GetModule().EnsureEmitted(*pBufferedSampleTimeVar);
-        llvm::Value* pBufferedSample = function.GetModule().EnsureEmitted(*pBufferedSampleVar);
+        emitters::Variable* pBufferedSampleTimeVar = module.Variables().AddVariable<emitters::InitializedScalarVariable<TimeTickType>>(emitters::VariableScope::global, _bufferedSampleTime);
+        emitters::Variable* pBufferedSampleVar = module.Variables().AddVariable<emitters::InitializedVectorVariable<ValueType>>(emitters::VariableScope::global, output.Size());
+        llvm::Value* pBufferedSampleTime = module.EnsureEmitted(*pBufferedSampleTimeVar);
+        llvm::Value* pBufferedSample = module.EnsureEmitted(*pBufferedSampleVar);
         llvm::Value* bufferedSampleTime = function.Load(pBufferedSampleTime);
+        UNUSED(bufferedSampleTime);
 
         // Callback function
-        const emitters::ValueTypeList parameters = { emitters::GetPointerType(emitters::GetVariableType<ValueType>()) };
-        function.GetModule().DeclareFunction(_samplingFunctionName, emitters::GetVariableType<bool>(), parameters);
-        function.GetModule().IncludeInHeader(_samplingFunctionName);
-        function.GetModule().IncludeInCallbackInterface(_samplingFunctionName, "SourceNode");
+        const emitters::NamedVariableTypeList parameters = { { "input", emitters::GetPointerType(emitters::GetVariableType<ValueType>()) } };
+        std::string prefixedName(compiler.GetNamespacePrefix() + "_" + GetCallbackName());
+        module.DeclareFunction(prefixedName, emitters::GetVariableType<bool>(), parameters);
+        module.IncludeInCallbackInterface(prefixedName, "SourceNode");
 
-        llvm::Function* pSamplingFunction = function.GetModule().GetFunction(_samplingFunctionName);
+        llvm::Function* pSamplingFunction = module.GetFunction(prefixedName);
 
         // Locals
         auto sampleTime = function.ValueAt(pInput, function.Literal(0));
-        auto currentTime = function.ValueAt(pInput, function.Literal(1));
 
-        // If the requested sample time is different from cached, invoke the callback and optionally interpolate.
-        auto if1 = function.If(emitters::GetComparison<TimeTickType>(emitters::BinaryPredicateType::notEqual), sampleTime, bufferedSampleTime);
-        {
-            DEBUG_EMIT_PRINTF(function, _samplingFunctionName + "\n");
+        // Invoke the callback and optionally interpolate.
+        function.Call(pSamplingFunction, { function.PointerOffset(pBufferedSample, 0) });
 
-            auto result = function.Call(pSamplingFunction, { function.PointerOffset(pBufferedSample, 0) });
-            auto if2 = function.If(emitters::TypedComparison::equals, result, function.Literal(true));
-            {
-                auto if3 = function.If(emitters::GetComparison<TimeTickType>(emitters::BinaryPredicateType::greater), currentTime, sampleTime);
-                {
-                    // Interpolate(diff, _bufferedSample);
-                }
-                if3.End();
-            }
-            if2.End();
-        }
-        if1.End();
+        // TODO: Interpolate if there is a sample, and currentTime > sampleTime
+        // Note: currentTime can be retrieved via currentTime = function.ValueAt(pInput, function.Literal(1));
 
         // Set sample values to the output
-        if (!IsScalar(output) && !compiler.GetCompilerParameters().unrollLoops)
+        if (!IsScalar(output) && !compiler.GetCompilerOptions().unrollLoops)
         {
             SetOutputValuesLoop(compiler, function, pBufferedSample);
         }
@@ -109,47 +98,72 @@ namespace nodes
         function.Store(pBufferedSampleTime, sampleTime);
     }
 
-    template <typename ValueType, SamplingFunction<ValueType> getSample>
-    void SourceNode<ValueType, getSample>::Copy(model::ModelTransformer& transformer) const
+    template <typename ValueType>
+    void SourceNode<ValueType>::Copy(model::ModelTransformer& transformer) const
     {
         auto newPortElements = transformer.TransformPortElements(_input.GetPortElements());
-        auto newNode = transformer.AddNode<SourceNode<ValueType, getSample>>(newPortElements, output.Size(), _samplingFunctionName);
-
+        auto newNode = transformer.AddNode<SourceNode<ValueType>>(newPortElements, GetShape(), GetCallbackName(), _source);
         transformer.MapNodeOutput(output, newNode->output);
     }
 
-    template <typename ValueType, SamplingFunction<ValueType> getSample>
-    void SourceNode<ValueType, getSample>::WriteToArchive(utilities::Archiver& archiver) const
+    template <typename ValueType>
+    utilities::ArchiveVersion SourceNode<ValueType>::GetArchiveVersion() const
+    {
+        constexpr utilities::ArchiveVersion sourceNodeShapeArchiveVersion = { utilities::ArchiveVersionNumbers::v4_source_sink_shapes };
+        
+        return sourceNodeShapeArchiveVersion;
+    }
+
+    template <typename ValueType>
+    bool SourceNode<ValueType>::CanReadArchiveVersion(const utilities::ArchiveVersion& version) const
+    {
+        constexpr utilities::ArchiveVersion sourceNodeNoShapeArchiveVersion = { utilities::ArchiveVersionNumbers::v0_initial };
+        constexpr utilities::ArchiveVersion sourceNodeShapeArchiveVersion = { utilities::ArchiveVersionNumbers::v4_source_sink_shapes };
+
+        return version >= sourceNodeNoShapeArchiveVersion && version <= sourceNodeShapeArchiveVersion;
+    }
+
+    template <typename ValueType>
+    void SourceNode<ValueType>::WriteToArchive(utilities::Archiver& archiver) const
     {
         Node::WriteToArchive(archiver);
-        archiver[inputPortName] << _input;
-        archiver[outputPortName] << _output;
-        archiver["samplingFunctionName"] << _samplingFunctionName;
+        archiver[defaultInputPortName] << _input;
+        archiver[defaultOutputPortName] << _output;
+        archiver["sourceFunctionName"] << GetCallbackName();
+        archiver["shape"] << static_cast<std::vector<size_t>>(GetShape());
     }
 
-    template <typename ValueType, SamplingFunction<ValueType> getSample>
-    void SourceNode<ValueType, getSample>::ReadFromArchive(utilities::Unarchiver& archiver)
+    template <typename ValueType>
+    void SourceNode<ValueType>::ReadFromArchive(utilities::Unarchiver& archiver)
     {
         Node::ReadFromArchive(archiver);
-        archiver[inputPortName] >> _input;
-        archiver[outputPortName] >> _output;
-        archiver["samplingFunctionName"] >> _samplingFunctionName;
+        archiver[defaultInputPortName] >> _input;
+        archiver[defaultOutputPortName] >> _output;
+
+        std::string sourceFunctionName;
+        archiver["sourceFunctionName"] >> sourceFunctionName;
+        SetCallbackName(sourceFunctionName);
+
+        std::vector<size_t> shapeVector;
+        archiver["shape"] >> shapeVector;
+        SetShape(math::TensorShape{ shapeVector });
+        _output.SetSize(GetShape().Size());
     }
 
-    template <typename ValueType, SamplingFunction<ValueType> getSample>
-    void SourceNode<ValueType, getSample>::Interpolate(TimeTickType /*originalTime*/, TimeTickType /*newTime*/) const
+    template <typename ValueType>
+    void SourceNode<ValueType>::Interpolate(TimeTickType /*originalTime*/, TimeTickType /*newTime*/) const
     {
         // Default to pass-through (derived classes will override).
     }
 
-    template <typename ValueType, SamplingFunction<ValueType> getSample>
-    void SourceNode<ValueType, getSample>::SetOutputValuesLoop(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function, llvm::Value* sample)
+    template <typename ValueType>
+    void SourceNode<ValueType>::SetOutputValuesLoop(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function, llvm::Value* sample)
     {
         llvm::Value* pOutput = compiler.EnsurePortEmitted(output);
 
         auto numValues = output.Size();
         auto forLoop = function.ForLoop();
-        forLoop.Begin(0, numValues, 1);
+        forLoop.Begin(numValues);
         {
             auto i = forLoop.LoadIterationVariable();
             auto value = function.ValueAt(sample, i);
@@ -158,8 +172,8 @@ namespace nodes
         forLoop.End();
     }
 
-    template <typename ValueType, SamplingFunction<ValueType> getSample>
-    void SourceNode<ValueType, getSample>::SetOutputValuesExpanded(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function, llvm::Value* sample)
+    template <typename ValueType>
+    void SourceNode<ValueType>::SetOutputValuesExpanded(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function, llvm::Value* sample)
     {
         llvm::Value* pOutput = compiler.EnsurePortEmitted(output);
 

@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "DynamicMap.h"
+#include "Map.h"
 
 // stl
 #include <string>
@@ -16,8 +16,8 @@
 void SetOutputPathBase(std::string path);
 std::string OutputPath(std::string relPath);
 
-ell::model::DynamicMap MakeSimpleMap();
-ell::model::DynamicMap MakeForestMap();
+ell::model::Map MakeSimpleMap();
+ell::model::Map MakeForestMap();
 
 void TestBinaryVector(bool expanded, bool runJit = false);
 void TestBinaryScalar();
@@ -31,12 +31,17 @@ void TestBinaryPredicate(bool expanded);
 void TestMultiplexer();
 void TestSlidingAverage();
 void TestDotProductOutput();
+template <typename ElementType>
 void TestLinearPredictor();
 void TestForest();
 void TestForestMap();
 
 void TestSimpleMap(bool optimize);
-void TestSteppableMap(bool runJit = false);
+void TestSqEuclideanDistanceMap();
+void TestProtoNNPredictorMap();
 void TestMultiOutputMap();
 void TestMultiOutputMap2();
+void TestMultiSourceSinkMap();
 void TestCompiledMapMove();
+
+#include "../tcc/CompilerTest.tcc"

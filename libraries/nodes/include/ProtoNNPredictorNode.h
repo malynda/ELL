@@ -29,12 +29,8 @@ namespace nodes
     public:
         /// @name Input and Output Ports
         /// @{
-        static constexpr const char* inputPortName = "input";
-        static constexpr const char* outputScorePortName = "outputScore";
-        static constexpr const char* outputLabelPortName = "outputLabel";
         const model::InputPort<double>& input = _input;
-        const model::OutputPort<double>& outputScore = _outputScore;
-        const model::OutputPort<int>& outputLabel = _outputLabel;
+        const model::OutputPort<double>& output = _output;
 
         /// @}
 
@@ -46,6 +42,7 @@ namespace nodes
         /// <summary> Constructor </summary>
         ///
         /// <param name="input"> The signal to predict from </param>
+        /// <param name="outputSize">The size of the output vector</param>
         /// <param name="predictor"> The ProtoNN predictor to use when making the prediction. </param>
         ProtoNNPredictorNode(const model::PortElements<double>& input, const ProtoNNPredictor& predictor);
 
@@ -57,28 +54,25 @@ namespace nodes
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+        std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
         /// <summary> Makes a copy of this node in the model being constructed by the transformer </summary>
-        virtual void Copy(model::ModelTransformer& transformer) const override;
+        void Copy(model::ModelTransformer& transformer) const override;
 
         /// <summary> Refines this node in the model being constructed by the transformer </summary>
-        virtual bool Refine(model::ModelTransformer& transformer) const override;
+        bool Refine(model::ModelTransformer& transformer) const override;
 
     protected:
-        virtual void Compute() const override;
-        virtual void WriteToArchive(utilities::Archiver& archiver) const override;
-        virtual void ReadFromArchive(utilities::Unarchiver& archiver) override;
+        void Compute() const override;
+        void WriteToArchive(utilities::Archiver& archiver) const override;
+        void ReadFromArchive(utilities::Unarchiver& archiver) override;
 
     private:
         // Inputs
         model::InputPort<double> _input;
 
-        // Output score
-        model::OutputPort<double> _outputScore;
-
-        // Output label
-        model::OutputPort<int> _outputLabel;
+        // Output scores
+        model::OutputPort<double> _output;
 
         // ProtoNN predictor
         ProtoNNPredictor _predictor;

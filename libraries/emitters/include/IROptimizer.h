@@ -8,16 +8,16 @@
 #pragma once
 
 // llvm
-#include "llvm/IR/Function.h"
-#include "llvm/IR/LegacyPassManager.h"
-#include "llvm/IR/Module.h"
-#include "llvm/IR/PassManager.h"
+#include <llvm/IR/Function.h>
+#include <llvm/IR/LegacyPassManager.h>
+#include <llvm/IR/Module.h>
+#include <llvm/IR/PassManager.h>
 
 namespace ell
 {
 namespace emitters
 {
-    ///<summary>Class to manage optimizations for functions</summary>
+    ///<summary> Class to manage optimizations for functions </summary>
     class IRFunctionOptimizer
     {
     public:

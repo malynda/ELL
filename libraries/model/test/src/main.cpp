@@ -10,7 +10,7 @@
 // Model tests
 //
 
-#include "DynamicMap_test.h"
+#include "Map_test.h"
 #include "ModelBuilder_test.h"
 #include "Model_test.h"
 #include "PortElements_test.h"
@@ -28,12 +28,13 @@ using namespace ell;
 
 int main()
 {
-    //    try
+    try
     {
         // Model tests
         TestStaticModel();
         TestNodeIterator();
-        TestExampleModel();
+        TestModelSerialization();
+        TestModelMetadata();
         TestInputRouting1();
         TestInputRouting2();
 
@@ -45,13 +46,13 @@ int main()
         TestAppend();
         TestParsePortElements();
 
-        // DynamicMap tests
-        TestDynamicMapCreate();
-        TestDynamicMapCompute();
-        TestDynamicMapComputeDataVector();
-        TestDynamicMapRefine();
-        TestDynamicMapSerialization();
-        TestSteppableMapCompute();
+        // Map tests
+        TestMapCreate();
+        TestMapCompute();
+        TestMapComputeDataVector();
+        TestMapRefine();
+        TestMapSerialization();
+        TestMapClockNode();
 
         TestCustomRefine();
 
@@ -80,11 +81,16 @@ int main()
         // Test ModelBuilder::AddNode(string, vector<string>)
         TestVariantAddInputNodesParsedArgs();
     }
-    //    catch (const utilities::Exception& exception)
-    //    {
-    //        std::cerr << "ERROR, got ELL exception. Message: " << exception.GetMessage() << std::endl;
-    //        throw;
-    //    }
+    catch (const utilities::Exception& exception)
+    {
+        std::cerr << "ERROR, got ELL exception. Message: " << exception.GetMessage() << std::endl;
+        return 1;
+    }
+    catch (const std::exception& exception)
+    {
+        std::cerr << "ERROR, got unhandled exception. Message: " << exception.what() << std::endl;
+        return 1;
+    }
 
     if (testing::DidTestFail())
     {

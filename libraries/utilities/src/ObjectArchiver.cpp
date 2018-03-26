@@ -7,14 +7,12 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "ObjectArchiver.h"
-#include "Archiver.h"
 #include "IArchivable.h"
+#include "Unused.h"
 
-#include <cassert>
-#include <cctype>
-#include <iostream>
-#include <sstream>
+// stl
 #include <string>
+#include <vector>
 
 namespace ell
 {
@@ -33,17 +31,9 @@ namespace utilities
     //
     // Serialization
     //
-    IMPLEMENT_ARCHIVE_VALUE(ObjectArchiver, bool);
-    IMPLEMENT_ARCHIVE_VALUE(ObjectArchiver, char);
-    IMPLEMENT_ARCHIVE_VALUE(ObjectArchiver, short);
-    IMPLEMENT_ARCHIVE_VALUE(ObjectArchiver, int);
-    IMPLEMENT_ARCHIVE_VALUE(ObjectArchiver, size_t);
-    IMPLEMENT_ARCHIVE_VALUE(ObjectArchiver, int64_t);
-#ifdef __APPLE__
-    IMPLEMENT_ARCHIVE_VALUE(ObjectArchiver, uint64_t);
-#endif
-    IMPLEMENT_ARCHIVE_VALUE(ObjectArchiver, float);
-    IMPLEMENT_ARCHIVE_VALUE(ObjectArchiver, double);
+    #define ARCHIVE_TYPE_OP(t) IMPLEMENT_ARCHIVE_VALUE(ObjectArchiver, t);
+    ARCHIVABLE_TYPES_LIST
+    #undef ARCHIVE_TYPE_OP
 
     // strings
     void ObjectArchiver::ArchiveValue(const char* name, const std::string& value)
@@ -77,20 +67,17 @@ namespace utilities
         }
     }
 
+    bool ObjectArchiver::HasNextPropertyName(const std::string& name)
+    {
+        return _objectDescription.HasProperty(name);
+    }
+
     //
     // Arrays
     //
-    IMPLEMENT_ARCHIVE_ARRAY(ObjectArchiver, bool);
-    IMPLEMENT_ARCHIVE_ARRAY(ObjectArchiver, char);
-    IMPLEMENT_ARCHIVE_ARRAY(ObjectArchiver, short);
-    IMPLEMENT_ARCHIVE_ARRAY(ObjectArchiver, int);
-    IMPLEMENT_ARCHIVE_ARRAY(ObjectArchiver, size_t);
-    IMPLEMENT_ARCHIVE_ARRAY(ObjectArchiver, int64_t);
-#ifdef __APPLE__
-    IMPLEMENT_ARCHIVE_ARRAY(ObjectArchiver, uint64_t);
-#endif
-    IMPLEMENT_ARCHIVE_ARRAY(ObjectArchiver, float);
-    IMPLEMENT_ARCHIVE_ARRAY(ObjectArchiver, double);
+    #define ARCHIVE_TYPE_OP(t) IMPLEMENT_ARCHIVE_ARRAY(ObjectArchiver, t);
+    ARCHIVABLE_TYPES_LIST
+    #undef ARCHIVE_TYPE_OP
 
     void ObjectArchiver::ArchiveArray(const char* name, const std::vector<std::string>& array)
     {
@@ -99,6 +86,7 @@ namespace utilities
 
     void ObjectArchiver::ArchiveArray(const char* name, const std::string& baseTypeName, const std::vector<const IArchivable*>& array)
     {
+        UNUSED(baseTypeName);
         if (std::string{ "" } == name)
         {
             _objectDescription.SetValue(array);
@@ -113,17 +101,9 @@ namespace utilities
     //
     // Deserialization
     //
-    IMPLEMENT_UNARCHIVE_VALUE(ObjectArchiver, bool);
-    IMPLEMENT_UNARCHIVE_VALUE(ObjectArchiver, char);
-    IMPLEMENT_UNARCHIVE_VALUE(ObjectArchiver, short);
-    IMPLEMENT_UNARCHIVE_VALUE(ObjectArchiver, int);
-    IMPLEMENT_UNARCHIVE_VALUE(ObjectArchiver, size_t);
-    IMPLEMENT_UNARCHIVE_VALUE(ObjectArchiver, int64_t);
-#ifdef __APPLE__
-    IMPLEMENT_UNARCHIVE_VALUE(ObjectArchiver, uint64_t);
-#endif
-    IMPLEMENT_UNARCHIVE_VALUE(ObjectArchiver, float);
-    IMPLEMENT_UNARCHIVE_VALUE(ObjectArchiver, double);
+    #define ARCHIVE_TYPE_OP(t) IMPLEMENT_UNARCHIVE_VALUE(ObjectArchiver, t);
+    ARCHIVABLE_TYPES_LIST
+    #undef ARCHIVE_TYPE_OP
 
     // strings
     void ObjectArchiver::UnarchiveValue(const char* name, std::string& value)
@@ -155,17 +135,9 @@ namespace utilities
     //
     // Arrays
     //
-    IMPLEMENT_UNARCHIVE_ARRAY(ObjectArchiver, bool);
-    IMPLEMENT_UNARCHIVE_ARRAY(ObjectArchiver, char);
-    IMPLEMENT_UNARCHIVE_ARRAY(ObjectArchiver, short);
-    IMPLEMENT_UNARCHIVE_ARRAY(ObjectArchiver, int);
-    IMPLEMENT_UNARCHIVE_ARRAY(ObjectArchiver, size_t);
-    IMPLEMENT_UNARCHIVE_ARRAY(ObjectArchiver, int64_t);
-#ifdef __APPLE__
-    IMPLEMENT_UNARCHIVE_ARRAY(ObjectArchiver, uint64_t);
-#endif
-    IMPLEMENT_UNARCHIVE_ARRAY(ObjectArchiver, float);
-    IMPLEMENT_UNARCHIVE_ARRAY(ObjectArchiver, double);
+    #define ARCHIVE_TYPE_OP(t) IMPLEMENT_UNARCHIVE_ARRAY(ObjectArchiver, t);
+    ARCHIVABLE_TYPES_LIST
+    #undef ARCHIVE_TYPE_OP
 
     void ObjectArchiver::UnarchiveArray(const char* name, std::vector<std::string>& array)
     {
@@ -181,11 +153,13 @@ namespace utilities
 
     bool ObjectArchiver::BeginUnarchiveArrayItem(const std::string& typeName)
     {
+        UNUSED(typeName);
         return true;
     }
 
     void ObjectArchiver::EndUnarchiveArrayItem(const std::string& typeName)
     {
+        UNUSED(typeName);
     }
 }
 }

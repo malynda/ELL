@@ -6,8 +6,6 @@
 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include "NeuralNetworkPredictor.h"
-
 //stl
 #include <iostream>
 
@@ -15,7 +13,7 @@ namespace ell
 {
 namespace predictors
 {
-    constexpr int c_currentNeuralNetworkPredictorArchiveVersion = 1;
+    constexpr utilities::ArchiveVersion c_currentNeuralNetworkPredictorArchiveVersion = {utilities::ArchiveVersionNumbers::v1};
 
     template <typename ElementType>
     NeuralNetworkPredictor<ElementType>::NeuralNetworkPredictor(InputLayerReference&& inputLayer, Layers&& layers) :
@@ -26,13 +24,27 @@ namespace predictors
     }
 
     template <typename ElementType>
+    void NeuralNetworkPredictor<ElementType>::RemoveLastLayers(size_t numberToRemove)
+    {
+        if (_layers.size() > numberToRemove)
+        {
+            _layers.resize(_layers.size() - numberToRemove);
+            _output.resize(_layers.back()->GetOutput().Size());
+        }
+        else
+        {
+            throw utilities::InputException(utilities::InputExceptionErrors::sizeMismatch, "RemoveLastLayers numberToRemove exceeds number of layers.");
+        }
+    }
+
+    template <typename ElementType>
     typename NeuralNetworkPredictor<ElementType>::Shape NeuralNetworkPredictor<ElementType>::GetInputShape() const
     {
         if (_inputLayer != nullptr)
         {
             return _inputLayer->GetInputShape();
         }
-        return {};
+        return {0, 0, 0};
     }
 
     template <typename ElementType>
@@ -42,7 +54,7 @@ namespace predictors
         {
             return _layers.back()->GetOutputShape();
         }
-        return {};
+        return {0, 0, 0};
     }
 
     template <typename ElementType>
@@ -53,7 +65,25 @@ namespace predictors
             _inputLayer->SetInput(dataVector);
             _inputLayer->Compute();
         }
+        Compute();
+        return _output;
+    }
 
+    template <typename ElementType>
+    const std::vector<ElementType>& NeuralNetworkPredictor<ElementType>::Predict(const std::vector<ElementType>& input) const
+    {
+        if (_inputLayer != nullptr)
+        {
+            _inputLayer->SetInput(input);
+            _inputLayer->Compute();
+        }
+        Compute();
+        return _output;
+    }
+
+    template <typename ElementType>
+    void NeuralNetworkPredictor<ElementType>::Compute() const
+    {
         // Forward feed inputs through the layers
         for (size_t i = 0; i < _layers.size(); i++)
         {
@@ -83,8 +113,6 @@ namespace predictors
         {
             _output.assign(_output.size(), 0);
         }
-
-        return _output;
     }
 
     template <typename ElementType>
@@ -105,7 +133,6 @@ namespace predictors
     void NeuralNetworkPredictor<ElementType>::ReadFromArchive(utilities::Unarchiver& archiver)
     {
         neural::LayerSerializationContext<ElementType> layerContext(archiver.GetContext());
-        RegisterNeuralNetworkPredictorTypes(layerContext);
         archiver.PushContext(layerContext);
 
         std::unique_ptr<neural::InputLayer<ElementType>> inputLayer;
@@ -128,8 +155,10 @@ namespace predictors
     void NeuralNetworkPredictor<ElementType>::RegisterNeuralNetworkPredictorTypes(utilities::SerializationContext& context)
     {
         using namespace ell::predictors::neural;
-        context.GetTypeFactory().AddType<neural::InputLayer<ElementType>, neural::InputLayer<ElementType>>(); 
+        context.GetTypeFactory().AddType<neural::InputLayer<ElementType>, neural::InputLayer<ElementType>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::ActivationLayer<ElementType, HardSigmoidActivation>>();
         context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::ActivationLayer<ElementType, LeakyReLUActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::ActivationLayer<ElementType, ParametricReLUActivation>>();
         context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::ActivationLayer<ElementType, ReLUActivation>>();
         context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::ActivationLayer<ElementType, SigmoidActivation>>();
         context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::BatchNormalizationLayer<ElementType>>();
@@ -139,15 +168,57 @@ namespace predictors
         context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::FullyConnectedLayer<ElementType>>();
         context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::PoolingLayer<ElementType, MaxPoolingFunction>>();
         context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::PoolingLayer<ElementType, MeanPoolingFunction>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::RecurrentLayer<ElementType, TanhActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::RegionDetectionLayer<ElementType>>();
         context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::ScalingLayer<ElementType>>();
         context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::SoftmaxLayer<ElementType>>();
         context.GetTypeFactory().AddType<NeuralNetworkPredictor<ElementType>, NeuralNetworkPredictor<ElementType>>();
+
+        //
+        // GRULayer with inner product of ['TanhActivation', 'SigmoidActivation', 'HardSigmoidActivation', 'ReLUActivation']
+        //
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::GRULayer<ElementType, TanhActivation, TanhActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::GRULayer<ElementType, TanhActivation, SigmoidActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::GRULayer<ElementType, TanhActivation, HardSigmoidActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::GRULayer<ElementType, TanhActivation, ReLUActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::GRULayer<ElementType, SigmoidActivation, TanhActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::GRULayer<ElementType, SigmoidActivation, SigmoidActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::GRULayer<ElementType, SigmoidActivation, HardSigmoidActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::GRULayer<ElementType, SigmoidActivation, ReLUActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::GRULayer<ElementType, HardSigmoidActivation, TanhActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::GRULayer<ElementType, HardSigmoidActivation, SigmoidActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::GRULayer<ElementType, HardSigmoidActivation, HardSigmoidActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::GRULayer<ElementType, HardSigmoidActivation, ReLUActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::GRULayer<ElementType, ReLUActivation, TanhActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::GRULayer<ElementType, ReLUActivation, SigmoidActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::GRULayer<ElementType, ReLUActivation, HardSigmoidActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::GRULayer<ElementType, ReLUActivation, ReLUActivation>>();
+
+        //
+        // LSTMLayer with inner product of ['TanhActivation', 'SigmoidActivation', 'HardSigmoidActivation', 'ReLUActivation']
+        //
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::LSTMLayer<ElementType, TanhActivation, TanhActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::LSTMLayer<ElementType, TanhActivation, SigmoidActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::LSTMLayer<ElementType, TanhActivation, HardSigmoidActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::LSTMLayer<ElementType, TanhActivation, ReLUActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::LSTMLayer<ElementType, SigmoidActivation, TanhActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::LSTMLayer<ElementType, SigmoidActivation, SigmoidActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::LSTMLayer<ElementType, SigmoidActivation, HardSigmoidActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::LSTMLayer<ElementType, SigmoidActivation, ReLUActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::LSTMLayer<ElementType, HardSigmoidActivation, TanhActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::LSTMLayer<ElementType, HardSigmoidActivation, SigmoidActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::LSTMLayer<ElementType, HardSigmoidActivation, HardSigmoidActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::LSTMLayer<ElementType, HardSigmoidActivation, ReLUActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::LSTMLayer<ElementType, ReLUActivation, TanhActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::LSTMLayer<ElementType, ReLUActivation, SigmoidActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::LSTMLayer<ElementType, ReLUActivation, HardSigmoidActivation>>();
+        context.GetTypeFactory().AddType<neural::Layer<ElementType>, neural::LSTMLayer<ElementType, ReLUActivation, ReLUActivation>>();
     }
 
     template <typename ElementType>
     utilities::ArchiveVersion NeuralNetworkPredictor<ElementType>::GetCurrentArchiveVersion()
     {
-        return { c_currentNeuralNetworkPredictorArchiveVersion };        
+        return c_currentNeuralNetworkPredictorArchiveVersion;
     }
 
     template <typename ElementType>
@@ -155,7 +226,5 @@ namespace predictors
     {
         return GetCurrentArchiveVersion();
     }
-
-
 }
 }

@@ -42,17 +42,17 @@ namespace nodes
         // Calculate input dimension parameters
         size_t inputPaddingSize = layerParameters.inputPaddingParameters.paddingSize;
         auto inputShape = this->_layer.GetInputShape();
-        std::vector<size_t> inputStride{ inputShape.begin(), inputShape.end() };
+        std::vector<size_t> inputStride = inputShape;
         std::vector<size_t> inputOffset = { inputPaddingSize, inputPaddingSize, 0 };
         std::vector<size_t> inputSize = inputStride;
-        for (int dimensionIndex = 0; dimensionIndex < inputOffset.size(); ++dimensionIndex)
+        for (size_t dimensionIndex = 0; dimensionIndex < inputOffset.size(); ++dimensionIndex)
         {
             inputSize[dimensionIndex] -= 2 * inputOffset[dimensionIndex];
         }
 
         size_t outputPaddingSize = layerParameters.outputPaddingParameters.paddingSize;
         auto outputShape = this->_layer.GetOutputShape();
-        std::vector<size_t> outputStride{ outputShape.begin(), outputShape.end() };
+        std::vector<size_t> outputStride = outputShape;
         std::vector<size_t> outputOffset = { outputPaddingSize, outputPaddingSize, 0 };
 
         auto newInput = transformer.TransformPortElements(this->input.GetPortElements());
@@ -63,7 +63,7 @@ namespace nodes
         auto m = weights.NumRows();
         auto n = weights.NumColumns();
         auto lda = weights.GetIncrement();
-        auto weightsValues = std::vector<ValueType>{ weights.GetDataPointer(), weights.GetDataPointer() + weights.GetDataSize() };
+        auto weightsValues = weights.ToArray();
         auto weightsNode = transformer.AddNode<ConstantNode<ValueType>>(weightsValues);
         auto matrixMultiplyNode = transformer.AddNode<MatrixVectorMultiplyNode<ValueType>>(weightsNode->output, m, n, lda, newInput);
 

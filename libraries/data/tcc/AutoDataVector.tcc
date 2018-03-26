@@ -60,13 +60,19 @@ namespace data
     }
 
     template <typename DefaultDataVectorType>
-    void AutoDataVectorBase<DefaultDataVectorType>::AppendElement(size_t index, double value)
+    void AutoDataVectorBase<DefaultDataVectorType>::AppendElement(size_t /*index*/, double /*value*/)
     {
         throw utilities::LogicException(utilities::LogicExceptionErrors::notImplemented, "Append element not supported for AutoDataVector");
     }
 
     template <typename DefaultDataVectorType>
-    double AutoDataVectorBase<DefaultDataVectorType>::Dot(const math::UnorientedConstVectorReference<double> vector) const
+    double AutoDataVectorBase<DefaultDataVectorType>::Dot(math::UnorientedConstVectorBase<double> vector) const
+    {
+        return _pInternal->Dot(vector);
+    }
+
+    template <typename DefaultDataVectorType>
+    float AutoDataVectorBase<DefaultDataVectorType>::Dot(math::UnorientedConstVectorBase<float> vector) const
     {
         return _pInternal->Dot(vector);
     }
@@ -135,7 +141,7 @@ namespace data
             includesNonFloats |= DoesCastModifyValue<float>(value);
             includesNonShorts |= DoesCastModifyValue<short>(value);
             includesNonBytes |= DoesCastModifyValue<char>(value);
-            includesNonBinary |= (value - 1.0 > APPROXIMATION_TOLERANCE || 1.0 - value > APPROXIMATION_TOLERANCE);
+            includesNonBinary |= (value != 1 && value != 0);
 
             iter.Next();
         }

@@ -30,9 +30,11 @@ namespace data
     /// <typeparam name="MetadataParserType"> Metadata parser type. </typeparam>
     /// <typeparam name="DataVectorParserType"> DataVector parser type. </typeparam>
     template <typename TextLineIteratorType, typename MetadataParserType, typename DataVectorParserType>
-    class SingleLineParsingExampleIterator : public IExampleIterator<AutoSupervisedExample>
+    class SingleLineParsingExampleIterator : public IExampleIterator<ParserExample<DataVectorParserType, MetadataParserType>>
     {
     public:
+        using ExampleType = ParserExample<DataVectorParserType, MetadataParserType>;
+
         /// <summary> Constructs a SingleLineParsingExampleIterator. </summary>
         ///
         /// <param name="textLineIterator"> The row iterator. </param>
@@ -43,15 +45,15 @@ namespace data
         /// <summary> Returns true if the iterator is currently pointing to a valid iterate. </summary>
         ///
         /// <returns> true if the iterator is valid, false otherwise. </returns>
-        virtual bool IsValid() const override { return _textLineIterator.IsValid(); }
+        bool IsValid() const override { return _textLineIterator.IsValid(); }
 
         /// <summary> Proceeds to the next example. </summary>
-        virtual void Next() override;
+        void Next() override;
 
         /// <summary> Gets the current example. </summary>
         ///
         /// <returns> A SupervisedExample. </returns>
-        virtual AutoSupervisedExample Get() const override;
+        ExampleType Get() const override { return _currentExample; };
 
     private:
         void ReadExample();
@@ -59,7 +61,7 @@ namespace data
         TextLineIteratorType _textLineIterator;
         MetadataParserType _metadataParser;
         DataVectorParserType _dataVectorParser;
-        AutoSupervisedExample _currentExample;
+        ExampleType _currentExample;
     };
 
     /// <summary>
@@ -76,7 +78,7 @@ namespace data
     ///
     /// <returns> The single-line parsing example iterator. </returns>
     template <typename TextLineIteratorType, typename MetadataParserType, typename DataVectorParserType>
-    ExampleIterator<AutoSupervisedExample> MakeSingleLineParsingExampleIterator(TextLineIteratorType textLineIterator, MetadataParserType metadataParser, DataVectorParserType dataVectorParser);
+    auto MakeSingleLineParsingExampleIterator(TextLineIteratorType textLineIterator, MetadataParserType metadataParser, DataVectorParserType dataVectorParser);
 }
 }
 

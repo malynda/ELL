@@ -12,9 +12,10 @@
 #include "BinaryOperationNode.h"
 #include "ConstantNode.h"
 #include "DotProductNode.h"
-#include "L2NormNode.h"
+#include "L2NormSquaredNode.h"
 #include "UnaryOperationNode.h"
 #include "MatrixVectorProductNode.h"
+#include "SquaredEuclideanDistanceNode.h"
 #include "ExtremalValueNode.h"
 
 // utilities
@@ -33,12 +34,12 @@ namespace ell
 namespace nodes
 {
     ProtoNNPredictorNode::ProtoNNPredictorNode()
-        : Node({ &_input }, { &_outputScore, &_outputLabel }), _input(this, {}, inputPortName), _outputScore(this, outputScorePortName, 0), _outputLabel(this, outputLabelPortName, 1)
+        : Node({ &_input }, { &_output }), _input(this, {}, defaultInputPortName), _output(this, defaultOutputPortName, 0)
     {
     }
 
     ProtoNNPredictorNode::ProtoNNPredictorNode(const model::PortElements<double>& input, const predictors::ProtoNNPredictor& predictor)
-        : Node({ &_input }, { &_outputScore, &_outputLabel }), _input(this, input, inputPortName), _outputScore(this, outputScorePortName, 1), _outputLabel(this, outputLabelPortName, 1), _predictor(predictor)
+        : Node({ &_input }, { &_output }), _input(this, input, defaultInputPortName), _output(this, defaultOutputPortName, predictor.GetNumLabels()), _predictor(predictor)
     {
         assert(input.Size() == predictor.GetDimension());
     }
@@ -46,18 +47,16 @@ namespace nodes
     void ProtoNNPredictorNode::WriteToArchive(utilities::Archiver& archiver) const
     {
         Node::WriteToArchive(archiver);
-        archiver[inputPortName] << _input;
-        archiver[outputScorePortName] << _outputScore;
-        archiver[outputLabelPortName] << _outputLabel;
+        archiver[defaultInputPortName] << _input;
+        archiver[defaultOutputPortName] << _output;
         archiver["predictor"] << _predictor;
     }
 
     void ProtoNNPredictorNode::ReadFromArchive(utilities::Unarchiver& archiver)
     {
         Node::ReadFromArchive(archiver);
-        archiver[inputPortName] >> _input;
-        archiver[outputScorePortName] >> _outputScore;
-        archiver[outputLabelPortName] >> _outputLabel;
+        archiver[defaultInputPortName] >> _input;
+        archiver[defaultOutputPortName] >> _output;
         archiver["predictor"] >> _predictor;
     }
 
@@ -65,8 +64,7 @@ namespace nodes
     {
         auto newPortElements = transformer.TransformPortElements(_input.GetPortElements());
         auto newNode = transformer.AddNode<ProtoNNPredictorNode>(newPortElements, _predictor);
-        transformer.MapNodeOutput(outputLabel, newNode->outputLabel);
-        transformer.MapNodeOutput(outputScore, newNode->outputScore);
+        transformer.MapNodeOutput(output, newNode->output);
     }
 
     bool ProtoNNPredictorNode::Refine(model::ModelTransformer& transformer) const
@@ -79,42 +77,47 @@ namespace nodes
 
         auto prototypes = _predictor.GetPrototypes();
         auto m = _predictor.GetNumPrototypes();
-        auto k = _predictor.GetProjectedDimension();
-        auto gammaNode = transformer.AddNode<ConstantNode<double>>(_predictor.GetGamma() * _predictor.GetGamma() * -1);
-        model::PortElements<double> similarityOutputs;
+
+        std::vector<double> multiplier(m, _predictor.GetGamma() * _predictor.GetGamma() * -1);
+        auto gammaNode = transformer.AddNode<ConstantNode<double>>(multiplier);
+
+        // Distance to each prototype
+        math::RowMatrixReference<double> prototypesMatrix = prototypes.Transpose();
+        auto squareDistanceNode = transformer.AddNode<SquaredEuclideanDistanceNode<double, math::MatrixLayout::rowMajor>>(projecedInputNode->output, prototypesMatrix);
 
         // Similarity to each prototype
-        for (size_t i = 0; i < m; ++i)
-        {
-            std::vector<double> prototype(prototypes.GetColumn(i).ToArray());
-            auto prototypeNode = transformer.AddNode<ConstantNode<double>>(prototype);
-
-            auto similarityDistanceNode1 = transformer.AddNode<BinaryOperationNode<double>>(projecedInputNode->output, prototypeNode->output, emitters::BinaryOperationType::subtract);
-            auto similarityDistanceNode2 = transformer.AddNode<L2NormNode<double>>(similarityDistanceNode1->output);
-            auto squareSimilarityDistNode = transformer.AddNode<BinaryOperationNode<double>>(similarityDistanceNode2->output, similarityDistanceNode2->output, emitters::BinaryOperationType::coordinatewiseMultiply);
-            auto scaledSimilarityDistNode = transformer.AddNode<BinaryOperationNode<double>>(squareSimilarityDistNode->output, gammaNode->output, emitters::BinaryOperationType::coordinatewiseMultiply);
-            auto similarityMultiplier = transformer.AddNode<UnaryOperationNode<double>>(scaledSimilarityDistNode->output, emitters::UnaryOperationType::exp);
-            similarityOutputs.Append(similarityMultiplier->output);
-        }
+        auto scaledDistanceNode = transformer.AddNode<BinaryOperationNode<double>>(squareDistanceNode->output, gammaNode->output, emitters::BinaryOperationType::coordinatewiseMultiply);
+        auto expDistanceNode = transformer.AddNode<UnaryOperationNode<double>>(scaledDistanceNode->output, emitters::UnaryOperationType::exp);
 
         // Get the prediction label
-        auto labelScoresNode = transformer.AddNode<MatrixVectorProductNode<double, math::MatrixLayout::columnMajor>>(similarityOutputs, _predictor.GetLabelEmbeddings());
-        auto predictionLabelNode = transformer.AddNode<ArgMaxNode<double>>(labelScoresNode->output);
+        auto labelScoresNode = transformer.AddNode<MatrixVectorProductNode<double, math::MatrixLayout::columnMajor>>(expDistanceNode->output, _predictor.GetLabelEmbeddings());
 
-        transformer.MapNodeOutput(outputScore, predictionLabelNode->val);
-        transformer.MapNodeOutput(outputLabel, predictionLabelNode->argVal);
+        auto outNode = transformer.AddNode<model::OutputNode<double>>(labelScoresNode->output);
+
+        transformer.MapNodeOutput(output, outNode->output);
 
         return true;
     }
 
     void ProtoNNPredictorNode::Compute() const
     {
-        auto inputDataVector = ProtoNNPredictor::DataVectorType(_input.GetIterator());
+        auto indexValueIterator = _input.GetIterator();
 
-        predictors::ProtoNNPrediction prediction = _predictor.Predict(inputDataVector);
+        // densify the index/value pairs directly into a std::vector, which avoids making a copy via DoubleDataVector.
+        std::vector<double> inputData;
+        while (indexValueIterator.IsValid())
+        {
+            auto current = indexValueIterator.Get();
+            auto index = current.index;
+            double value = current.value;
+            inputData.resize(index + 1);
+            inputData.back() = value;
+            indexValueIterator.Next();
+        }
 
-        _outputScore.SetOutput({ prediction.score });
-        _outputLabel.SetOutput({ (int)prediction.label });
+        auto prediction = _predictor.Predict(inputData);
+
+        _output.SetOutput(prediction.ToArray());
     }
 
     ProtoNNPredictorNode* AddNodeToModelTransformer(const model::PortElements<double>& input, const predictors::ProtoNNPredictor& predictor, model::ModelTransformer& transformer)

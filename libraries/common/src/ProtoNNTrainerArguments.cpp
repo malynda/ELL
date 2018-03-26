@@ -14,32 +14,32 @@ namespace common
 {
     void ParsedProtoNNTrainerArguments::AddArgs(utilities::CommandLineParser& parser)
     {
-        parser.AddOption(projectedDimesion,
-            "projectedDimesion",
+        parser.AddOption(projectedDimension,
+            "projectedDimension",
             "pd",
-            "The projected dimension", 5);
+            "The projected dimension. Decreasing pd will lead to smaller model size but decreasing it beyond a point can lead to loss in accuracy", 5);
 
         parser.AddOption(numPrototypesPerLabel,
             "numPrototypesPerLabel",
             "mp",
-            "The number of prototypes", 10);
+            "The number of prototypes. Increasing mp should lead to bigger model size and higher accuracy, up to a point. Typically, we want to have 10 prototypes per class", 10);
 
         parser.AddOption(numLabels,
             "numLabels",
             "l",
             "The number of labels", 2);
 
-        parser.AddOption(lambdaW,
+        parser.AddOption(sparsityW,
             "sparsityW",
             "sw",
-            "The sparsity parameter for W", 1.0);
+            "The sparsity parameter for W, i.e. fraction of non-zeros in the the projection matrix W. Increasing sw leads to increase in model size and accuracy, provided there is no overfitting. So for low-d problems, we can leave sw to be 1 and for high-d problems it should be much smaller", 1.0);
 
-        parser.AddOption(lambdaB,
+        parser.AddOption(sparsityB,
             "sparsityB",
             "sb",
             "The sparsity parameter for B", 1.0);
 
-        parser.AddOption(lambdaZ,
+        parser.AddOption(sparsityZ,
             "sparsityZ",
             "sz",
             "The sparsity parameter for Z",	1.0);
@@ -50,19 +50,19 @@ namespace common
             "The gamma value",
             -1.0);
 
-        parser.AddOption(lossType,
+        parser.AddOption(lossFunction,
             "protonnLossFunction",
             "plf",
             "Choice of loss function",
-            { { "L2", trainers::ProtoNNLossType::L2 },{ "L4", trainers::ProtoNNLossType::L4 } }, "L4");
+            { { "L2", trainers::ProtoNNLossFunction::L2 },{ "L4", trainers::ProtoNNLossFunction::L4 } }, "L4");
 
-        parser.AddOption(numIters,
+        parser.AddOption(numIterations,
             "numIterations",
             "nIter",
             "Number of outer iterations",
             20);
 
-        parser.AddOption(numInnerIters,
+        parser.AddOption(numInnerIterations,
             "numInnerIterations",
             "nInnerIter",
             "Number of inner iterations",

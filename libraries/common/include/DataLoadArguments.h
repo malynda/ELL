@@ -30,6 +30,7 @@ namespace common
 
         // not exposed on the command line
         size_t parsedDataDimension = 0;
+
     };
 
     /// <summary> A version of DataLoadArguments that adds its members to the command line parser. </summary>
@@ -38,14 +39,14 @@ namespace common
         /// <summary> Adds the arguments to the command line parser. </summary>
         ///
         /// <param name="parser"> [in,out] The parser. </param>
-        virtual void AddArgs(utilities::CommandLineParser& parser) override;
+        void AddArgs(utilities::CommandLineParser& parser) override;
 
         /// <summary> Checks the parsed arguments. </summary>
         ///
         /// <param name="parser"> The parser. </param>
         ///
         /// <returns> An utilities::CommandLineParseResult. </returns>
-        virtual utilities::CommandLineParseResult PostProcess(const utilities::CommandLineParser& parser) override;
+        utilities::CommandLineParseResult PostProcess(const utilities::CommandLineParser& parser) override;
     };
 }
 }

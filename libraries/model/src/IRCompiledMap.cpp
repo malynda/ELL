@@ -21,7 +21,7 @@
 #include "Files.h"
 
 // llvm
-#include "llvm/Transforms/Utils/Cloning.h"
+#include <llvm/Transforms/Utils/Cloning.h>
 
 // stl
 #include <sstream>
@@ -31,17 +31,13 @@ namespace ell
 namespace model
 {
     IRCompiledMap::IRCompiledMap(IRCompiledMap&& other)
-        : CompiledMap(std::move(other), other._functionName), _moduleName(std::move(other._moduleName)), _module(std::move(other._module)), _executionEngine(std::move(other._executionEngine))
+        : CompiledMap(std::move(other), other._functionName), _moduleName(std::move(other._moduleName)), _module(std::move(other._module)), _executionEngine(std::move(other._executionEngine)), _computeFunctionDefined(false)
     {
-        if (_executionEngine)
-        {
-            SetComputeFunction();
-        }
     }
 
     // private constructor:
-    IRCompiledMap::IRCompiledMap(DynamicMap map, const std::string& functionName, std::unique_ptr<emitters::IRModuleEmitter> module)
-        : CompiledMap(std::move(map), functionName), _module(std::move(module))
+    IRCompiledMap::IRCompiledMap(Map map, const std::string& functionName, std::unique_ptr<emitters::IRModuleEmitter> module)
+        : CompiledMap(std::move(map), functionName), _module(std::move(module)), _computeFunctionDefined(false)
     {
         _moduleName = _module->GetModuleName();
     }
@@ -63,8 +59,13 @@ namespace model
         {
             auto moduleClone = std::unique_ptr<llvm::Module>(llvm::CloneModule(_module->GetLLVMModule()));
             _executionEngine = std::make_unique<emitters::IRExecutionEngine>(std::move(moduleClone));
-            SetComputeFunction();
         }
+    }
+
+    void IRCompiledMap::FinishJitting() const
+    {
+        EnsureExecutionEngine();
+        SetComputeFunction();
     }
 
     void IRCompiledMap::SetComputeFunction() const
@@ -98,7 +99,8 @@ namespace model
 
     void IRCompiledMap::SetNodeInput(model::InputNode<bool>* node, const std::vector<bool>& inputValues) const
     {
-        EnsureExecutionEngine();
+        FinishJitting();
+
         if (GetInput(0)->GetOutputPort().GetType() != node->GetOutputPort().GetType())
         {
             throw utilities::InputException(utilities::InputExceptionErrors::typeMismatch);
@@ -114,7 +116,8 @@ namespace model
 
     void IRCompiledMap::SetNodeInput(model::InputNode<int>* node, const std::vector<int>& inputValues) const
     {
-        EnsureExecutionEngine();
+        FinishJitting();
+
         if (GetInput(0)->GetOutputPort().GetType() != node->GetOutputPort().GetType())
         {
             throw utilities::InputException(utilities::InputExceptionErrors::typeMismatch);
@@ -125,7 +128,8 @@ namespace model
 
     void IRCompiledMap::SetNodeInput(model::InputNode<int64_t>* node, const std::vector<int64_t>& inputValues) const
     {
-        EnsureExecutionEngine();
+        FinishJitting();
+
         if (GetInput(0)->GetOutputPort().GetType() != node->GetOutputPort().GetType())
         {
             throw utilities::InputException(utilities::InputExceptionErrors::typeMismatch);
@@ -136,7 +140,8 @@ namespace model
 
     void IRCompiledMap::SetNodeInput(model::InputNode<float>* node, const std::vector<float>& inputValues) const
     {
-        EnsureExecutionEngine();
+        FinishJitting();
+
         if (GetInput(0)->GetOutputPort().GetType() != node->GetOutputPort().GetType())
         {
             throw utilities::InputException(utilities::InputExceptionErrors::typeMismatch);
@@ -147,7 +152,7 @@ namespace model
 
     void IRCompiledMap::SetNodeInput(model::InputNode<double>* node, const std::vector<double>& inputValues) const
     {
-        EnsureExecutionEngine();
+        FinishJitting();
         if (GetInput(0)->GetOutputPort().GetType() != node->GetOutputPort().GetType())
         {
             throw utilities::InputException(utilities::InputExceptionErrors::typeMismatch);
@@ -158,7 +163,8 @@ namespace model
 
     std::vector<bool> IRCompiledMap::ComputeBoolOutput(const model::PortElementsBase& outputs) const
     {
-        EnsureExecutionEngine();
+        FinishJitting();
+
         if (GetOutput(0).GetPortType() != model::Port::PortType::boolean)
         {
             throw utilities::InputException(utilities::InputExceptionErrors::typeMismatch);
@@ -181,7 +187,7 @@ namespace model
 
     std::vector<int64_t> IRCompiledMap::ComputeInt64Output(const model::PortElementsBase& outputs) const
     {
-        EnsureExecutionEngine();
+        FinishJitting();
         if (GetOutput(0).GetPortType() != model::Port::PortType::bigInt)
         {
             throw utilities::InputException(utilities::InputExceptionErrors::typeMismatch);
@@ -192,7 +198,7 @@ namespace model
 
     std::vector<float> IRCompiledMap::ComputeFloatOutput(const model::PortElementsBase& outputs) const
     {
-        EnsureExecutionEngine();
+        FinishJitting();
         if (GetOutput(0).GetPortType() != model::Port::PortType::smallReal)
         {
             throw utilities::InputException(utilities::InputExceptionErrors::typeMismatch);
@@ -203,7 +209,7 @@ namespace model
 
     std::vector<double> IRCompiledMap::ComputeDoubleOutput(const model::PortElementsBase& outputs) const
     {
-        EnsureExecutionEngine();
+        FinishJitting();
         if (GetOutput(0).GetPortType() != model::Port::PortType::real)
         {
             throw utilities::InputException(utilities::InputExceptionErrors::typeMismatch);
@@ -268,6 +274,7 @@ namespace model
         }
 
         // if output isn't a simple port, add an output node to model
+        auto shape = GetOutputShape();
         auto out = GetOutput(0);
         if (!out.IsFullPortOutput())
         {
@@ -275,19 +282,19 @@ namespace model
             switch (out.GetPortType())
             {
                 case model::Port::PortType::boolean:
-                    outputNode = GetModel().AddNode<model::OutputNode<bool>>(model::PortElements<bool>(out));
+                    outputNode = GetModel().AddNode<model::OutputNode<bool>>(model::PortElements<bool>(out), shape);
                     break;
                 case model::Port::PortType::integer:
-                    outputNode = GetModel().AddNode<model::OutputNode<int>>(model::PortElements<int>(out));
+                    outputNode = GetModel().AddNode<model::OutputNode<int>>(model::PortElements<int>(out), shape);
                     break;
                 case model::Port::PortType::bigInt:
-                    outputNode = GetModel().AddNode<model::OutputNode<int64_t>>(model::PortElements<int64_t>(out));
+                    outputNode = GetModel().AddNode<model::OutputNode<int64_t>>(model::PortElements<int64_t>(out), shape);
                     break;
                 case model::Port::PortType::smallReal:
-                    outputNode = GetModel().AddNode<model::OutputNode<float>>(model::PortElements<float>(out));
+                    outputNode = GetModel().AddNode<model::OutputNode<float>>(model::PortElements<float>(out), shape);
                     break;
                 case model::Port::PortType::real:
-                    outputNode = GetModel().AddNode<model::OutputNode<double>>(model::PortElements<double>(out));
+                    outputNode = GetModel().AddNode<model::OutputNode<double>>(model::PortElements<double>(out), shape);
                     break;
                 default:
                     throw utilities::InputException(utilities::InputExceptionErrors::typeMismatch);

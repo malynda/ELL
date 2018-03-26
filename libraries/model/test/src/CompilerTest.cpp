@@ -12,20 +12,24 @@
 
 // model
 #include "CompilableNode.h"
-#include "DynamicMap.h"
+#include "Map.h"
 #include "IRCompiledMap.h"
 #include "Model.h"
-#include "SteppableMap.h"
 
 // nodes
 #include "AccumulatorNode.h"
+#include "ClockNode.h"
 #include "ConstantNode.h"
 #include "DelayNode.h"
 #include "DotProductNode.h"
 #include "ForestPredictorNode.h"
+#include "L2NormSquaredNode.h"
 #include "LinearPredictorNode.h"
+#include "MatrixVectorProductNode.h"
+#include "ProtoNNPredictorNode.h"
 #include "SinkNode.h"
 #include "SourceNode.h"
+#include "SquaredEuclideanDistanceNode.h"
 #include "SumNode.h"
 
 // emitters
@@ -35,27 +39,27 @@
 #include "IRFunctionEmitter.h"
 #include "IRMapCompiler.h"
 #include "IRModuleEmitter.h"
-#include "IRSteppableMapCompiler.h"
 #include "ScalarVariable.h"
 #include "VectorVariable.h"
 
 // predictors
 #include "LinearPredictor.h"
+#include "ProtoNNPredictor.h"
 
-// clock interface
-#include "ClockInterface.h"
+// utilities
+#include "Logger.h"
 
 // testing
 #include "testing.h"
 
 // stl
-#include <chrono>
 #include <iostream>
 #include <ostream>
 #include <string>
 #include <vector>
 
 using namespace ell;
+using namespace ell::logging;
 
 std::string outputBasePath = "";
 
@@ -73,17 +77,17 @@ std::string OutputPath(std::string relPath)
 // Helper functions for constructing example models/maps
 //
 
-model::DynamicMap MakeSimpleMap()
+model::Map MakeSimpleMap()
 {
     // make a model
     model::Model model;
     auto inputNode = model.AddNode<model::InputNode<double>>(3);
     auto sumNode = model.AddNode<nodes::SumNode<double>>(inputNode->output);
 
-    return model::DynamicMap{ model, { { "input", inputNode } }, { { "output", sumNode->output } } };
+    return model::Map{ model, { { "input", inputNode } }, { { "output", sumNode->output } } };
 }
 
-model::DynamicMap MakeForestMap()
+model::Map MakeForestMap()
 {
     // define some abbreviations
     using SplitAction = predictors::SimpleForestPredictor::SplitAction;
@@ -122,8 +126,8 @@ void TestSimpleMap(bool optimize)
     auto accumNode = model.AddNode<nodes::AccumulatorNode<double>>(inputNode->output);
     auto accumNode2 = model.AddNode<nodes::AccumulatorNode<double>>(accumNode->output);
     // auto outputNode = model.AddNode<model::OutputNode<double>>(accumNode->output);
-    auto map = model::DynamicMap(model, { { "input", inputNode } }, { { "output", accumNode2->output } });
-    model::MapCompilerParameters settings;
+    auto map = model::Map(model, { { "input", inputNode } }, { { "output", accumNode2->output } });
+    model::MapCompilerOptions settings;
     settings.compilerSettings.optimize = optimize;
     model::IRMapCompiler compiler(settings);
     auto compiledMap = compiler.Compile(map);
@@ -135,6 +139,110 @@ void TestSimpleMap(bool optimize)
     VerifyCompiledOutput(map, compiledMap, signal, " map");
 }
 
+void TestSqEuclideanDistanceMap()
+{
+    model::Model model;
+    auto inputNode = model.AddNode<model::InputNode<double>>(3);
+    math::RowMatrix<double> m{
+        { 1.2, 1.1, 0.8 },
+        { 0.6, 0.9, 1.3 },
+        { 0.3, 1.0, 0.4 },
+        { -.4, 0.2, -.7 }
+    };
+    auto sqEuclidDistNode = model.AddNode<nodes::SquaredEuclideanDistanceNode<double, math::MatrixLayout::rowMajor>>(inputNode->output, m);
+    auto map = model::Map{ model, { { "input", inputNode } }, { { "output", sqEuclidDistNode->output } } };
+
+    model::MapCompilerOptions settings;
+    settings.compilerSettings.optimize = true;
+    model::IRMapCompiler compiler(settings);
+    auto compiledMap = compiler.Compile(map);
+
+    testing::ProcessTest("Testing IsValid of original map", testing::IsEqual(compiledMap.IsValid(), true));
+
+    // compare output
+    std::vector<std::vector<double>> signal = { { 1, 2, 3 }, { 4, 5, 6 }, { 7, 8, 9 }, { 3, 4, 5 }, { 2, 3, 2 }, { 1, 5, 3 }, { 1, 2, 3 }, { 4, 5, 6 }, { 7, 8, 9 }, { 7, 4, 2 }, { 5, 2, 1 } };
+    VerifyCompiledOutput(map, compiledMap, signal, " map");
+}
+
+void TestProtoNNPredictorMap()
+{
+    // the values of dim, gamma, and matrices come from the result of running protoNNTrainer with the following command line
+    // protoNNTrainer -v --inputDataFilename Train-28x28_sparse.txt -dd 784 -sw 0.29 -sb 0.8 -sz 0.8 -pd 15 -l 10 -mp 5 --outputModelFilename mnist-94.model --evaluationFrequency 1 -plf L4 -ds 0.003921568627451
+
+    size_t dim = 784, projectedDim = 15, numPrototypes = 50, numLabels = 10;
+    double gamma = 0.0733256;
+    predictors::ProtoNNPredictor protonnPredictor(dim, projectedDim, numPrototypes, numLabels, gamma);
+
+    // projectedDim * dim
+    auto W = protonnPredictor.GetProjectionMatrix() =
+    {
+        #include "TestProtoNNPredictorMap_Projection.inc"
+    };
+
+    // projectedDim * numPrototypes
+    auto B = protonnPredictor.GetPrototypes() =
+    {
+        #include "TestProtoNNPredictorMap_Prototypes.inc"
+    };
+
+    // numLabels * numPrototypes
+    auto Z = protonnPredictor.GetLabelEmbeddings() =
+    {
+        #include "TestProtoNNPredictorMap_LabelEmbeddings.inc"
+    };
+
+    // MNIST training data features
+    std::vector<std::vector<double>> features =
+    {
+        #include "TestProtoNNPredictorMap_features.inc"
+    };
+
+    std::vector<std::vector<int>> labels{ { 0, 0, 0, 0, 1, 0, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0, 1, 0, 0, 0, 0 }, { 0, 0, 0, 0, 0, 0, 1, 0, 0, 0 } };
+
+    testing::IsEqual(protonnPredictor.GetProjectedDimension(), projectedDim);
+    testing::IsEqual(protonnPredictor.GetNumPrototypes(), numPrototypes);
+    testing::IsEqual(protonnPredictor.GetNumLabels(), numLabels);
+
+    model::Model model;
+    auto inputNode = model.AddNode<model::InputNode<double>>(dim);
+    auto protonnPredictorNode = model.AddNode<nodes::ProtoNNPredictorNode>(inputNode->output, protonnPredictor);
+    auto outputNode = model.AddNode<model::OutputNode<double>>(protonnPredictorNode->output);
+    auto map = model::Map{ model, { { "input", inputNode } }, { { "output", outputNode->output } } };
+
+    model::MapCompilerOptions settings;
+    settings.compilerSettings.optimize = false;
+    settings.compilerSettings.includeDiagnosticInfo = true;
+    settings.compilerSettings.inlineOperators = false;
+    model::IRMapCompiler compiler(settings);
+    auto compiledMap = compiler.Compile(map);
+
+    testing::ProcessTest("Testing IsValid of original map", testing::IsEqual(compiledMap.IsValid(), true));
+
+    for (unsigned i = 0; i < features.size(); ++i)
+    {
+        auto& input = features[i];
+        std::transform(input.begin(), input.end(), input.begin(), [](double d) { return d / 255; });
+
+        const auto& label = labels[i];
+
+        IsEqual(input.size(), dim);
+
+        inputNode->SetInput(input);
+        auto computeOutput = model.ComputeOutput(outputNode->output);
+        testing::ProcessTest("one hot indices are incorrect for computed and actual label",
+                             IsEqual(std::max_element(label.begin(), label.end()) - label.begin(),
+                                     std::max_element(computeOutput.begin(), computeOutput.end()) - computeOutput.begin()));
+
+        map.SetInputValue(0, input);
+        auto refinedOutput = map.ComputeOutput<double>(0);
+        testing::ProcessTest("computed and refined output vectors don't match", IsEqual(computeOutput, refinedOutput, 1e-5));
+
+        compiledMap.SetInputValue(0, input);
+        auto compiledOutput = compiledMap.ComputeOutput<double>(0);
+        testing::ProcessTest("refined and compiled output vectors don't match", IsEqual(refinedOutput, compiledOutput, 1e-5));
+    }
+}
+
 void TestMultiOutputMap()
 {
     model::Model model;
@@ -142,8 +250,8 @@ void TestMultiOutputMap()
     auto accumNode = model.AddNode<nodes::AccumulatorNode<double>>(inputNode->output);
     auto outputNode = model.AddNode<model::OutputNode<double>>(model::PortElements<double>{ inputNode->output, accumNode->output });
 
-    auto map = model::DynamicMap(model, { { "input", inputNode } }, { { "output", outputNode->output } });
-    model::MapCompilerParameters settings;
+    auto map = model::Map(model, { { "input", inputNode } }, { { "output", outputNode->output } });
+    model::MapCompilerOptions settings;
     model::IRMapCompiler compiler(settings);
     auto compiledMap = compiler.Compile(map);
 
@@ -163,7 +271,7 @@ void TestMultiOutputMap2()
     auto dotNode = model.AddNode<nodes::DotProductNode<double>>(inputNode->output, inputNode->output);
     auto outputNode = model.AddNode<model::OutputNode<double>>(model::PortElements<double>{ sumNode->output, dotNode->output });
 
-    auto map = model::DynamicMap(model, { { "input", inputNode } }, { { "output", outputNode->output } });
+    auto map = model::Map(model, { { "input", inputNode } }, { { "output", outputNode->output } });
     model::IRMapCompiler compiler;
     auto compiledMap = compiler.Compile(map);
     PrintIR(compiledMap);
@@ -178,7 +286,7 @@ void TestCompiledMapMove()
     model::Model model;
     auto inputNode = model.AddNode<model::InputNode<double>>(3);
     auto accumNode = model.AddNode<nodes::AccumulatorNode<double>>(inputNode->output);
-    auto map = model::DynamicMap(model, { { "input", inputNode } }, { { "output", accumNode->output } });
+    auto map = model::Map(model, { { "input", inputNode } }, { { "output", accumNode->output } });
     model::IRMapCompiler compiler1;
     auto compiledMap1 = compiler1.Compile(map);
 
@@ -214,12 +322,12 @@ void TestBinaryVector(bool expanded, bool runJit)
     auto bop = mb.Add(c1->output, input1->output);
     auto multiplyNode = mb.Multiply(bop->output, c2->output);
 
-    model::MapCompilerParameters settings;
+    model::MapCompilerOptions settings;
     settings.compilerSettings.unrollLoops = expanded;
     settings.mapFunctionName = modelFunctionName;
     model::IRMapCompiler compiler(settings);
 
-    model::DynamicMap map{ mb.Model, { { "input", input1 } }, { { "output", multiplyNode->output } } };
+    model::Map map{ mb.Model, { { "input", input1 } }, { { "output", multiplyNode->output } } };
     model::IRCompiledMap compiledMap = compiler.Compile(map);
 
     std::vector<double> testInput = { 1, 1, 1, 1 };
@@ -256,33 +364,33 @@ void TestBinaryScalar()
 
     auto addNode = mb.Add(c1->output, input1->output);
 
-    model::MapCompilerParameters settings;
+    model::MapCompilerOptions settings;
     settings.compilerSettings.optimize = true;
     model::IRMapCompiler compiler(settings);
-    model::DynamicMap map{ mb.Model, { { "input", input1 } }, { { "output", addNode->output } } };
+    model::Map map{ mb.Model, { { "input", input1 } }, { { "output", addNode->output } } };
     model::IRCompiledMap compiledMap = compiler.Compile(map);
     PrintIR(compiledMap);
 }
 
-void TestDotProduct(model::MapCompilerParameters& settings)
+void TestDotProduct(model::MapCompilerOptions& settings)
 {
     std::vector<double> data = { 5, 10, 15, 20 };
 
     ModelMaker mb;
     auto c1 = mb.Constant<double>(data);
     auto input1 = mb.Inputs<double>(4);
-    auto dotProduct = mb.DotProduct<double>(c1->output, input1->output);
+    auto dotProduct = mb.DotProduct(c1->output, input1->output);
     auto outputNode = mb.Outputs<double>(dotProduct->output);
 
     model::IRMapCompiler compiler(settings);
-    model::DynamicMap map{ mb.Model, { { "input", input1 } }, { { "output", outputNode->output } } };
+    model::Map map{ mb.Model, { { "input", input1 } }, { { "output", outputNode->output } } };
     model::IRCompiledMap compiledMap = compiler.Compile(map);
     PrintIR(compiledMap);
 }
 
 void TestDotProduct()
 {
-    model::MapCompilerParameters settings;
+    model::MapCompilerOptions settings;
 
     settings.compilerSettings.unrollLoops = false;
     settings.compilerSettings.inlineOperators = true;
@@ -305,12 +413,12 @@ void TestSimpleSum(bool expanded, bool optimized)
     auto input1 = mb.Inputs<double>(4);
     auto sumNode = mb.Sum<double>(input1->output);
 
-    model::MapCompilerParameters settings;
+    model::MapCompilerOptions settings;
     settings.compilerSettings.unrollLoops = expanded;
     settings.compilerSettings.optimize = optimized;
     model::IRMapCompiler compiler(settings);
 
-    model::DynamicMap map{ mb.Model, { { "input", input1 } }, { { "output", sumNode->output } } };
+    model::Map map{ mb.Model, { { "input", input1 } }, { { "output", sumNode->output } } };
     model::IRCompiledMap compiledMap = compiler.Compile(map);
     PrintIR(compiledMap);
     PrintDiagnostics(compiledMap.GetModule().GetDiagnosticHandler());
@@ -326,11 +434,11 @@ void TestSum(bool expanded, bool optimized)
     auto product = mb.Multiply<double>(c1->output, input1->output);
     auto sumNode = mb.Sum<double>(product->output);
 
-    model::MapCompilerParameters settings;
+    model::MapCompilerOptions settings;
     settings.compilerSettings.unrollLoops = expanded;
     settings.compilerSettings.optimize = optimized;
     model::IRMapCompiler compiler(settings);
-    model::DynamicMap map{ mb.Model, { { "input", input1 } }, { { "output", sumNode->output } } };
+    model::Map map{ mb.Model, { { "input", input1 } }, { { "output", sumNode->output } } };
     model::IRCompiledMap compiledMap = compiler.Compile(map);
     PrintIR(compiledMap);
 
@@ -349,10 +457,10 @@ void TestAccumulator(bool expanded)
     auto accumulate = mb.Accumulate<double>(product->output);
     auto outputNode = mb.Outputs<double>(accumulate->output);
 
-    model::MapCompilerParameters settings;
+    model::MapCompilerOptions settings;
     settings.compilerSettings.unrollLoops = expanded;
     model::IRMapCompiler compiler(settings);
-    model::DynamicMap map{ mb.Model, { { "input", input1 } }, { { "output", outputNode->output } } };
+    model::Map map{ mb.Model, { { "input", input1 } }, { { "output", outputNode->output } } };
     model::IRCompiledMap compiledMap = compiler.Compile(map);
     PrintIR(compiledMap);
 }
@@ -365,7 +473,7 @@ void TestDelay()
     auto outputNode = mb.Outputs<double>(delay->output);
 
     model::IRMapCompiler compiler;
-    model::DynamicMap map{ mb.Model, { { "input", input1 } }, { { "output", outputNode->output } } };
+    model::Map map{ mb.Model, { { "input", input1 } }, { { "output", outputNode->output } } };
     model::IRCompiledMap compiledMap = compiler.Compile(map);
     PrintIR(compiledMap);
 }
@@ -378,7 +486,7 @@ void TestSqrt()
     auto outputNode = mb.Outputs<double>(sqrt->output);
 
     model::IRMapCompiler compiler;
-    model::DynamicMap map{ mb.Model, { { "input", input1 } }, { { "output", outputNode->output } } };
+    model::Map map{ mb.Model, { { "input", input1 } }, { { "output", outputNode->output } } };
     model::IRCompiledMap compiledMap = compiler.Compile(map);
     PrintIR(compiledMap);
 }
@@ -394,7 +502,7 @@ void TestBinaryPredicate(bool expanded)
     auto outputNode = mb.Outputs<bool>(eq->output);
 
     model::IRMapCompiler compiler;
-    model::DynamicMap map{ mb.Model, { { "input", input1 } }, { { "output", outputNode->output } } };
+    model::Map map{ mb.Model, { { "input", input1 } }, { { "output", outputNode->output } } };
     model::IRCompiledMap compiledMap = compiler.Compile(map);
     PrintIR(compiledMap);
 }
@@ -410,7 +518,7 @@ void TestMultiplexer()
     auto outputNode = mb.Outputs<double>(selector->output);
 
     model::IRMapCompiler compiler;
-    model::DynamicMap map{ mb.Model, { { "input", input1 } }, { { "output", outputNode->output } } };
+    model::Map map{ mb.Model, { { "input", input1 } }, { { "output", outputNode->output } } };
     model::IRCompiledMap compiledMap = compiler.Compile(map);
     PrintIR(compiledMap);
 }
@@ -425,11 +533,11 @@ void TestSlidingAverage()
     auto avg = mb.Divide<double>(sum->output, dim->output);
     auto outputNode = mb.Outputs<double>(avg->output);
 
-    model::MapCompilerParameters settings;
+    model::MapCompilerOptions settings;
     settings.mapFunctionName = "TestSlidingAverage";
     model::IRMapCompiler compiler(settings);
 
-    model::DynamicMap map{ mb.Model, { { "input", input1 } }, { { "output", outputNode->output } } };
+    model::Map map{ mb.Model, { { "input", input1 } }, { { "output", outputNode->output } } };
     model::IRCompiledMap compiledMap = compiler.Compile(map);
 
     auto& module = compiledMap.GetModule();
@@ -453,7 +561,7 @@ void TestSlidingAverage()
 
 void TestDotProductOutput()
 {
-    model::MapCompilerParameters settings;
+    model::MapCompilerOptions settings;
     settings.compilerSettings.inlineOperators = false;
     settings.mapFunctionName = "TestDotProduct";
     std::vector<double> data = { 5, 10, 15, 20 };
@@ -461,11 +569,11 @@ void TestDotProductOutput()
     ModelMaker mb;
     auto c1 = mb.Constant<double>(data);
     auto input1 = mb.Inputs<double>(4);
-    auto dotProduct = mb.DotProduct<double>(c1->output, input1->output);
+    auto dotProduct = mb.DotProduct(c1->output, input1->output);
     auto outputNode = mb.Outputs<double>(dotProduct->output);
 
     model::IRMapCompiler compiler(settings);
-    model::DynamicMap map{ mb.Model, { { "input", input1 } }, { { "output", outputNode->output } } };
+    model::Map map{ mb.Model, { { "input", input1 } }, { { "output", outputNode->output } } };
     model::IRCompiledMap compiledMap = compiler.Compile(map);
 
     auto mainFunction = compiledMap.GetModule().BeginMainDebugFunction();
@@ -481,77 +589,13 @@ void TestDotProductOutput()
     compiledMap.GetModule().WriteToFile(OutputPath("dot.ll"));
 }
 
-model::DynamicMap MakeLinearPredictor()
-{
-    // make a linear predictor
-    size_t dim = 3;
-    predictors::LinearPredictor predictor(dim);
-    predictor.GetBias() = 2.0;
-    predictor.GetWeights() = math::ColumnVector<double>{ 3.0, 4.0, 5.0 };
-
-    // make a model
-    model::Model model;
-    auto inputNode = model.AddNode<model::InputNode<double>>(3);
-    auto linearPredictorNode = model.AddNode<nodes::LinearPredictorNode>(inputNode->output, predictor);
-
-    // refine the model
-    model::TransformContext context;
-    model::ModelTransformer transformer;
-    auto newModel = transformer.RefineModel(model, context);
-
-    // check for equality
-    auto newInputNode = transformer.GetCorrespondingInputNode(inputNode);
-    auto newOutputElements = transformer.GetCorrespondingOutputs(model::PortElements<double>{ linearPredictorNode->output });
-    inputNode->SetInput({ 1.0, 1.0, 1.0 });
-    newInputNode->SetInput({ 1.0, 1.0, 1.0 });
-    auto modelOutputValue = model.ComputeOutput(linearPredictorNode->output)[0];
-    auto newOutputValue = newModel.ComputeOutput(newOutputElements)[0];
-
-    testing::ProcessTest("Testing LinearPredictorNode refine", testing::IsEqual(modelOutputValue, newOutputValue));
-    model::DynamicMap map{ newModel, { { "input", newInputNode } }, { { "output", newOutputElements } } };
-    return map;
-}
-
-void TestLinearPredictor()
-{
-    auto map = MakeLinearPredictor();
-
-    std::vector<double> data = { 1.0, 1.0, 1.0 };
-
-    model::MapCompilerParameters settings;
-    settings.mapFunctionName = "TestLinear";
-    model::IRMapCompiler compiler(settings);
-    auto compiledMap = compiler.Compile(map);
-
-    //
-    // Generate a Main method to invoke our model
-    //
-    auto& module = compiledMap.GetModule();
-    module.DeclarePrintf();
-
-    auto mainFunction = module.BeginMainFunction();
-    llvm::Value* pData = module.ConstantArray("c_data", data);
-
-    llvm::Value* pResult1 = mainFunction.Variable(emitters::VariableType::Double, 1);
-    llvm::Value* pResult2 = mainFunction.Variable(emitters::VariableType::Double, 1);
-    mainFunction.Call("TestLinear", { mainFunction.PointerOffset(pData, 0), mainFunction.PointerOffset(pResult1, 0), mainFunction.PointerOffset(pResult2, 0) });
-
-    mainFunction.PrintForEach("%f\n", pResult1, 1);
-    mainFunction.PrintForEach("%f\n", pResult2, 1);
-    mainFunction.Return();
-    module.EndFunction();
-
-    PrintIR(module);
-    module.WriteToFile(OutputPath("linear.ll"));
-}
-
 void TestForest()
 {
     auto map = MakeForestMap();
 
     std::vector<double> data = { 0.2, 0.5, 0.0 };
 
-    model::MapCompilerParameters settings;
+    model::MapCompilerOptions settings;
     settings.compilerSettings.optimize = true;
     settings.compilerSettings.includeDiagnosticInfo = false;
     settings.mapFunctionName = "TestForest";
@@ -601,128 +645,102 @@ void TestForest()
     compiledMap.GetModule().WriteToFile(OutputPath("forest_map.ll"));
 }
 
-const std::vector<double> c_steppableMapData{ 1, 3, 5, 7, 9, 11, 13 };
-std::vector<double> compiledSteppableMapResults(c_steppableMapData.size());
-
 extern "C"
 {
 // Callbacks used by compiled map
-bool CompiledSteppableMap_DataCallback(double* input)
+bool TestMulti_DataCallback1(double* input)
 {
-    std::copy(c_steppableMapData.begin(), c_steppableMapData.end(), input);
+    Log() << "Data callback 1" << EOL;
+    const std::vector<double> input1{ 1, 3, 5, 7, 9, 11, 13 };
+    std::copy(input1.begin(), input1.end(), input);
     return true;
 }
-const std::string sourceFunctionName("CompiledSteppableMap_DataCallback");
-
-void CompiledSteppableMap_ResultsCallback(double* results)
+bool TestMulti_DataCallback2(double* input)
 {
-    compiledSteppableMapResults.assign(results, results + c_steppableMapData.size());
+    Log() << "Data callback 2" << EOL;
+    const std::vector<double> input2{ 42 };
+    std::copy(input2.begin(), input2.end(), input);
+    return true;
 }
-const std::string sinkFunctionName("CompiledSteppableMap_ResultsCallback");
+
+void TestMulti_ResultsCallback_Scalar(double result)
+{
+    Log() << "Results callback (scalar): " << result << EOL;
+}
+
+void TestMulti_ResultsCallback_Vector(double* result)
+{
+    Log() << "Results callback (vector): " << result[0] << EOL;
+}
+
+void TestMulti_LagNotificationCallback(double lag)
+{
+    Log() << "Lag callback:" << lag << EOL;
+}
 }
 
 // Ensure that LLVM jit can find these symbols
-TESTING_FORCE_DEFINE_SYMBOL(CompiledSteppableMap_DataCallback, bool, double*);
-TESTING_FORCE_DEFINE_SYMBOL(CompiledSteppableMap_ResultsCallback, void, double*);
+TESTING_FORCE_DEFINE_SYMBOL(TestMulti_DataCallback1, bool, double*);
+TESTING_FORCE_DEFINE_SYMBOL(TestMulti_DataCallback2, bool, double*);
+TESTING_FORCE_DEFINE_SYMBOL(TestMulti_ResultsCallback_Scalar, void, double);
+TESTING_FORCE_DEFINE_SYMBOL(TestMulti_ResultsCallback_Vector, void, double*);
+TESTING_FORCE_DEFINE_SYMBOL(TestMulti_LagNotificationCallback, void, double);
 
-// Callbacks used by dynamic map
-bool SteppableMap_DataCallback(std::vector<double>& input)
+void TestMultiSourceSinkMap(bool expanded, bool optimized)
 {
-    return CompiledSteppableMap_DataCallback(&input[0]);
-}
-
-template <typename ClockType>
-void TestSteppableMap(bool runJit, std::function<model::TimeTickType()> getTicksFunction)
-{
-    const std::string stepFunctionName("TestStep");
-    std::vector<double> dynamicMapResults(c_steppableMapData.size());
-
     // Create the map
-    model::Model model;
-    auto inputNode = model.AddNode<model::InputNode<model::TimeTickType>>(2);
-    auto sourceNode = model.AddNode<nodes::SourceNode<double, &SteppableMap_DataCallback>>(inputNode->output, c_steppableMapData.size(), sourceFunctionName);
-    auto accumNode = model.AddNode<nodes::AccumulatorNode<double>>(sourceNode->output);
-    auto sinkNode = model.AddNode<nodes::SinkNode<double>>(accumNode->output,
-                                                           [&dynamicMapResults](const std::vector<double>& results)
-                                                           {
-                                                               dynamicMapResults.assign(results.begin(), results.end());
-                                                           },
-                                                           sinkFunctionName);
-    auto outputNode = model.AddNode<model::OutputNode<double>>(model::PortElements<double>(sinkNode->output));
+    constexpr nodes::TimeTickType lagThreshold = 200;
+    constexpr nodes::TimeTickType interval = 40;
 
-    auto duration = std::chrono::milliseconds(20);
-    auto map = model::SteppableMap<ClockType>(
-        model,
-        { { "timeSignal", inputNode } },
-        { { "accumulatorOutput", outputNode->output } },
-        duration);
+    model::Model model;
+    auto inputNode = model.AddNode<model::InputNode<nodes::TimeTickType>>(1 /*currentTime*/);
+    auto clockNode = model.AddNode<nodes::ClockNode>(inputNode->output, interval, lagThreshold,
+        "LagNotificationCallback");
+    auto sourceNode1 = model.AddNode<nodes::SourceNode<double>>(clockNode->output, 7,
+        "DataCallback1", [] (auto& v) { return TestMulti_DataCallback1(&v[0]); });
+    auto sourceNode2 = model.AddNode<nodes::SourceNode<double>>(clockNode->output, 1,
+        "DataCallback2", [] (auto& v) { return TestMulti_DataCallback2(&v[0]); });
+    auto sumNode = model.AddNode<nodes::SumNode<double>>(sourceNode1->output);
+    auto minusNode = model.AddNode<nodes::BinaryOperationNode<double>>(sumNode->output,
+        sourceNode2->output, emitters::BinaryOperationType::subtract);
+    auto conditionNode = model.AddNode<nodes::ConstantNode<bool>>(true);
+    auto sinkNode1 = model.AddNode<nodes::SinkNode<double>>(sumNode->output, conditionNode->output,
+        "ResultsCallback_Scalar");
+    auto sinkNode2 = model.AddNode<nodes::SinkNode<double>>(model::PortElements<double>{ minusNode->output, sumNode->output },
+        conditionNode->output,
+        "ResultsCallback_Vector");
+
+    // compiled maps require a single output, so we concatenate the ports for the sink nodes
+    auto outputNode = model.AddNode<model::OutputNode<double>>(model::PortElements<double>{ sinkNode1->output, sinkNode2->output });
+    auto map = model::Map(model, { { "time", inputNode } }, { { "output", outputNode->output } });
 
     // Compile the map
-    model::MapCompilerParameters settings;
-    settings.mapFunctionName = stepFunctionName;
-    settings.moduleName = "TestStepModule";
-    model::IRSteppableMapCompiler<ClockType> compiler(settings);
+    model::MapCompilerOptions settings;
+    settings.moduleName = "TestMulti";
+    settings.compilerSettings.optimize = optimized;
+    settings.compilerSettings.unrollLoops = expanded;
+
+    model::IRMapCompiler compiler(settings);
     auto compiledMap = compiler.Compile(map);
 
-    if (runJit)
+    // Compare output
+    std::vector<std::vector<nodes::TimeTickType>> signal =
     {
-        getTicksFunction();
+        { 0 },
+        { interval*1 + lagThreshold/2 }, // within threshold
+        { interval*2 }, // on time
+        { interval*3 + lagThreshold }, // late
+        { interval*4 + lagThreshold*20 }, // really late
+        { interval*5 } // on time
+    };
 
-        // Time signal input to the model (currently unused because map internally generates a signal)
-        std::vector<std::vector<model::TimeTickType>> timeSignal{ { 0, 0 } };
-        compiledSteppableMapResults.clear();
-
-        VerifyCompiledOutput(map, compiledMap, timeSignal, " steppable map");
-        testing::ProcessTest("Verifying sink output", testing::IsEqual(dynamicMapResults, compiledSteppableMapResults));
-    }
-    else
-    {
-        // Generate a Main method to invoke our model
-        auto mainFunction = compiledMap.GetModule().BeginMainDebugFunction();
-        emitters::IRFunctionCallArguments args(mainFunction);
-
-        // Time signal input to the model (currently unused because map internally generates a signal)
-        std::vector<model::TimeTickType> timeSignal{ 0, 0 };
-        args.Append(compiledMap.GetModule().ConstantArray("c_timeSignal", timeSignal));
-        auto pResult = args.AppendOutput(emitters::VariableType::Double, c_steppableMapData.size());
-
-        mainFunction.Call(stepFunctionName, args);
-        mainFunction.PrintForEach("%f\n", pResult, 1);
-        mainFunction.Return();
-        compiledMap.GetModule().EndFunction();
-
-        PrintIR(compiledMap);
-        compiledMap.GetModule().WriteToFile(OutputPath("step.ll"));
-        compiledMap.GetModule().WriteToFile(OutputPath("step.h"));
-        compiledMap.GetModule().WriteToFile(OutputPath("step.i"));
-    }
+    VerifyCompiledOutput(map, compiledMap, signal, " multi-sink and source map");
 }
 
-// Ensure that LLVM jit can find these symbols
-TESTING_FORCE_DEFINE_SYMBOL(ELL_GetSteadyClockMilliseconds, double);
-TESTING_FORCE_DEFINE_SYMBOL(ELL_GetSystemClockMilliseconds, double);
-
-void TestSteppableMap(bool runJit)
+void TestMultiSourceSinkMap()
 {
-    TestSteppableMap<std::chrono::steady_clock>(runJit, []()
-    {
-        auto ticks = ELL_GetSteadyClockMilliseconds();
-        if (IsVerbose())
-        {
-            std::cout << "ELL_GetSteadyClockMilliseconds() ticks: " << ticks << "\n";
-        }
-        return ticks;
-    });
-
-    // Occassional failures, investigating
-    /*
-    TestSteppableMap<std::chrono::system_clock>(runJit, []()
-    {
-        auto ticks = ELL_GetSystemClockMilliseconds();
-        if (IsVerbose())
-        {
-            std::cout << "ELL_GetSystemClockMilliseconds() ticks: " << ticks << "\n";
-        }
-        return ticks;
-    });*/
+    TestMultiSourceSinkMap(true, true);
+    TestMultiSourceSinkMap(true, false);
+    TestMultiSourceSinkMap(false, true);
+    TestMultiSourceSinkMap(false, false);
 }

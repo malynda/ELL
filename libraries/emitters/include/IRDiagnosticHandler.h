@@ -7,9 +7,11 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 #pragma once
 
-#include "llvm/IR/LLVMContext.h"
+// llvm
+#include <llvm/IR/LLVMContext.h>
 
 // stl
+#include <string>
 #include <vector>
 
 namespace ell

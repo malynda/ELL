@@ -10,22 +10,21 @@
 #include "Archiver.h"
 #include "ObjectArchiver.h"
 
-// utiliites
-#include "Exception.h"
-
-// stl
-#include <memory>
-
 namespace ell
 {
 namespace utilities
 {
-    ObjectArchive IArchivable::GetDescription() const
+    ObjectArchive GetDescription(const IArchivable& object)
     {
         utilities::SerializationContext context;
         utilities::ObjectArchiver archiver(context);
-        archiver.Archive(*this);
+        archiver.Archive(object);
         return archiver.GetObjectArchive();
+    }
+
+    bool IArchivable::CanReadArchiveVersion(const ArchiveVersion& version) const
+    {
+        return version == GetArchiveVersion();
     }
 }
 }

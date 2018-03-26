@@ -12,37 +12,25 @@
 #include "ModuleEmitter.h"
 
 // model
-#include "DynamicMap.h"
-#include "InputNode.h"
-#include "Model.h"
-#include "Node.h"
-#include "OutputPort.h"
-#include "PortElements.h"
-
-// utilities
-#include "ConformingVector.h"
-#include "TypeName.h"
+#include "Map.h"
 
 // stl
-#include <functional>
-#include <memory>
 #include <ostream>
 #include <string>
-#include <vector>
 
 namespace ell
 {
 namespace model
 {
     /// <summary> Abstract base class for a map that has been compiled </summary>
-    class CompiledMap : public model::DynamicMap
+    class CompiledMap : public Map
     {
     public:
         CompiledMap(const CompiledMap& other) = delete;
 
         CompiledMap(CompiledMap&& other) = default;
 
-        virtual ~CompiledMap() = default;
+        ~CompiledMap() override = default;
 
         /// <summary> Get the name of function this map compiles to </summary>
         ///
@@ -94,10 +82,10 @@ namespace model
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+        std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
     protected:
-        CompiledMap(DynamicMap map, std::string functionName);
+        CompiledMap(Map map, std::string functionName);
         std::string _functionName;
     };
 }

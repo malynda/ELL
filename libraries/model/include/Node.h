@@ -8,13 +8,12 @@
 
 #pragma once
 
-#include "UniqueId.h"
-
 // utilities
 #include "IArchivable.h"
+#include "PropertyBag.h"
+#include "UniqueId.h"
 
 // stl
-#include <memory>
 #include <string>
 #include <vector>
 #include <ostream>
@@ -24,8 +23,9 @@ namespace ell
 /// <summary> model namespace </summary>
 namespace model
 {
-    class ModelTransformer;
     class InputPortBase;
+    class MapCompiler;
+    class ModelTransformer;
     class OutputPortBase;
     class Port;
 
@@ -33,8 +33,13 @@ namespace model
     class Node : public utilities::IArchivable
     {
     public:
+        static constexpr const char* defaultOutputPortName = "output";
+        static constexpr const char* defaultInputPortName = "input";
+        static constexpr const char* defaultInput1PortName = "input1";
+        static constexpr const char* defaultInput2PortName = "input2";
+
         Node() = default;
-        virtual ~Node() = default;
+        ~Node() override = default;
 
         /// <summary> Type to use for our node id </summary>
         typedef utilities::UniqueId NodeId;
@@ -70,6 +75,18 @@ namespace model
         /// <param name="portName"> The name of the port </param>
         /// <returns> A pointer to the port </returns>
         const InputPortBase* GetInputPort(const std::string& portName) const;
+
+        /// <summary> Returns an input port by index </summary>
+        ///
+        /// <param name="portIndex"> The index of the port </param>
+        /// <returns> A pointer to the port </returns>
+        InputPortBase* GetInputPort(size_t portIndex);
+
+        /// <summary> Returns an input port by index </summary>
+        ///
+        /// <param name="portIndex"> The index of the port </param>
+        /// <returns> A pointer to the port </returns>
+        const InputPortBase* GetInputPort(size_t portIndex) const;
 
         /// <summary> Returns the output "ports" for this node </summary>
         ///
@@ -128,7 +145,7 @@ namespace model
         static std::string GetTypeName() { return "Node"; }
 
         /// <summary> Indicates if this node is able to compile itself to code. </summary>
-        virtual bool IsCompilable() const { return false; }
+        virtual bool IsCompilable(const MapCompiler* compiler) const { return false; }
 
         /// <summary> Makes a copy of this node into the model being constructed by the transformer </summary>
         ///
@@ -140,24 +157,36 @@ namespace model
         /// <param name="os"> The stream to write data to. </param>
         void Print(std::ostream& os) const;
 
+        /// <summary> Computes the output of this node and stores it in the output ports </summary>
+        virtual void Compute() const = 0;
+
+        /// <summary> Get this object's metadata object. </summary>
+        ///
+        /// <returns> A reference to the PropertyBag containing the metadata for this object. </returns>
+        utilities::PropertyBag& GetMetadata() { return _metadata; }
+        
+        /// <summary> Get this object's metadata object. </summary>
+        ///
+        /// <returns> A const reference to the PropertyBag containing the metadata for this object. </returns>
+        const utilities::PropertyBag& GetMetadata() const { return _metadata; }
+        
     protected:
         Node(const std::vector<InputPortBase*>& inputs, const std::vector<OutputPortBase*>& outputs);
 
-        /// <summary> Refines this node in the model being constructed by the transformer </summary>
         virtual bool Refine(ModelTransformer& transformer) const;
 
-        /// <summary> Computes the output of this node and stores it in the output ports </summary>
-        virtual void Compute() const = 0;
-        virtual bool HasState() const;
+        virtual bool HasState() const { return true; }
 
         void AddInputPort(InputPortBase* input);
         void AddOutputPort(OutputPortBase* output);
 
+        utilities::ArchiveVersion GetArchiveVersion() const override;
+        bool CanReadArchiveVersion(const utilities::ArchiveVersion& version) const override;
         // We're supplying a base implementation from WriteToArchive and ReadFromArchive, but also
         // declaring them as abstract so that subclasses need to implement this themselves.
-        virtual void WriteToArchive(utilities::Archiver& archiver) const override = 0; 
-        virtual void ReadFromArchive(utilities::Unarchiver& archiver) override = 0;
-
+        void WriteToArchive(utilities::Archiver& archiver) const override = 0; 
+        void ReadFromArchive(utilities::Unarchiver& archiver) override = 0;
+        
     private:
         friend class Model;
         friend class ModelTransformer;
@@ -171,6 +200,7 @@ namespace model
         std::vector<OutputPortBase*> _outputs;
 
         mutable std::vector<const Node*> _dependentNodes;
+        utilities::PropertyBag _metadata;
     };
 }
 }

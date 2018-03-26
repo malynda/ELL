@@ -8,16 +8,8 @@ namespace predictors
 namespace neural
 {
 
-    %extend LayerShape
-    {  
-        LayerShape(size_t rows, size_t columns, size_t channels) 
-        {
-            return new ell::api::predictors::neural::LayerShape{rows, columns, channels};
-        }
-    };
-
     %extend LayerParameters
-    {  
+    {
         LayerParameters(const LayerShape& inputShape,
                         const PaddingParameters& inputPaddingParameters,
                         const LayerShape& outputShape,
@@ -41,23 +33,23 @@ namespace neural
 {
 
     %extend PaddingParameters
-    {  
-        PaddingParameters(PaddingScheme paddingScheme, size_t paddingSize) 
+    {
+        PaddingParameters(PaddingScheme paddingScheme, size_t paddingSize)
         {
             return new ell::predictors::neural::PaddingParameters{paddingScheme, paddingSize};
         }
     };
 
     %extend BinaryConvolutionalParameters
-    {  
-        BinaryConvolutionalParameters(size_t receptiveField, size_t stride, BinaryConvolutionMethod binaryConvolutionMethod)
+    {
+        BinaryConvolutionalParameters(size_t receptiveField, size_t stride, BinaryConvolutionMethod binaryConvolutionMethod, BinaryWeightsScale weightScale)
         {
-            return new ell::predictors::neural::BinaryConvolutionalParameters{receptiveField, stride, binaryConvolutionMethod};
+            return new ell::predictors::neural::BinaryConvolutionalParameters{receptiveField, stride, binaryConvolutionMethod, weightScale};
         }
     };
 
     %extend ConvolutionalParameters
-    {  
+    {
         ConvolutionalParameters(size_t receptiveField, size_t stride, ConvolutionMethod convolutionMethod, size_t numFiltersAtATime)
         {
             return new ell::predictors::neural::ConvolutionalParameters{receptiveField, stride, convolutionMethod, numFiltersAtATime};
@@ -65,13 +57,20 @@ namespace neural
     };
 
     %extend PoolingParameters
-    {  
+    {
         PoolingParameters(size_t poolingSize, size_t stride)
         {
             return new ell::predictors::neural::PoolingParameters{poolingSize, stride};
         }
     };
 
+    %extend RegionDetectionParameters
+    {
+        RegionDetectionParameters(int width, int height, int numBoxesPerCell, int numClasses, int numCoordinates)
+        {
+            return new ell::predictors::neural::RegionDetectionParameters{width, height, numBoxesPerCell, numClasses, numCoordinates};
+        }
+    };
 }
 }
 }
@@ -129,11 +128,19 @@ class ActivationType:
     relu = ActivationType_relu
     leaky = ActivationType_leaky
     sigmoid = ActivationType_sigmoid
+    tanh = ActivationType_tanh
+    softmax = ActivationType_softmax
+    prelu = ActivationType_prelu
+    hardSigmoid = ActivationType_hardSigmoid
 
 # Remove flat defines so callers only see the class above
 del ActivationType_relu
 del ActivationType_leaky
 del ActivationType_sigmoid
+del ActivationType_tanh
+del ActivationType_softmax
+del ActivationType_prelu
+del ActivationType_hardSigmoid
 
 # Python friendly class for PoolingType
 class PoolingType:
@@ -153,13 +160,44 @@ class BinaryConvolutionMethod:
 del BinaryConvolutionMethod_gemm
 del BinaryConvolutionMethod_bitwise
 
-# Python friendly class for ConvolutionMethod
-class ConvolutionMethod:
-    columnwise = ConvolutionMethod_columnwise
-    diagonal = ConvolutionMethod_diagonal
+# Python friendly class for BinaryWeightsScale
+class BinaryWeightsScale:
+    none = BinaryWeightsScale_none
+    mean = BinaryWeightsScale_mean
 
 # Remove flat defines so callers only see the class above
-del ConvolutionMethod_columnwise
+del BinaryWeightsScale_none
+del BinaryWeightsScale_mean
+
+# Python friendly class for ConvolutionMethod
+class ConvolutionMethod:
+    unrolled = ConvolutionMethod_unrolled
+    diagonal = ConvolutionMethod_diagonal
+    simple = ConvolutionMethod_simple
+
+# Remove flat defines so callers only see the class above
+del ConvolutionMethod_unrolled
 del ConvolutionMethod_diagonal
+del ConvolutionMethod_simple
+
+# Python friendly class for LayerType
+class LayerType:
+    gru = LayerType_gru
+    lstm = LayerType_lstm
+    recurrent = LayerType_recurrent
+
+
+del LayerType_gru
+del LayerType_lstm
+del LayerType_recurrent
+
+
+# Python friendly class for EpsilonSummand
+class EpsilonSummand:
+    sqrtVariance = EpsilonSummand_sqrtVariance
+    variance = EpsilonSummand_variance
+
+del EpsilonSummand_sqrtVariance
+del EpsilonSummand_variance
 
 %}

@@ -8,13 +8,14 @@
 
 #pragma once
 
-#include "BroadcastFunctionNode.h" // for Shape and PortMemoryLayout
+#include "BroadcastFunctionNode.h" 
 #include "NeuralNetworkLayerNode.h"
 
 // model
 #include "IRMapCompiler.h"
 #include "ModelTransformer.h"
 #include "PortElements.h"
+#include "PortMemoryLayout.h"
 
 // predictors
 #include "SoftmaxLayer.h"
@@ -37,8 +38,6 @@ namespace nodes
 
         /// @name Input and Output Ports
         /// @{
-        using BaseType::inputPortName; // "input"
-        using BaseType::outputPortName; // "output"
         using BaseType::input;
         using BaseType::output;
         /// @}
@@ -59,16 +58,14 @@ namespace nodes
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+        std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
         /// <summary> Indicates if this node is able to compile itself to code. </summary>
-        virtual bool IsCompilable() const override { return true; }
+        bool IsCompilable(const model::MapCompiler* compiler) const override { return true; }
 
     protected:
-        virtual void Compile(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function) override;
-
-        static size_t NumElements(const Shape& size);
-        virtual bool HasState() const override { return true; }
+        void Compile(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function) override;
+        using BaseType::HasState;
 
     private:
         // Helper for generating nested loops to visit all input/output values
@@ -76,8 +73,8 @@ namespace nodes
         void EmitComputeDimensionLoop(model::IRMapCompiler& compiler,
                                       emitters::IRFunctionEmitter& function,
                                       size_t dimension,
-                                      const PortMemoryLayout& inputLayout,
-                                      const PortMemoryLayout& outputLayout,
+                                      const model::PortMemoryLayout& inputLayout,
+                                      const model::PortMemoryLayout& outputLayout,
                                       llvm::Value* pInput,
                                       llvm::Value* pOutput,
                                       llvm::Value* prevInputDimensionOffset,
@@ -89,7 +86,7 @@ namespace nodes
         void EmitComputeDimensionLoop(model::IRMapCompiler& compiler,
                                       emitters::IRFunctionEmitter& function,
                                       size_t dimension,
-                                      const PortMemoryLayout& inputLayout,
+                                      const model::PortMemoryLayout& inputLayout,
                                       llvm::Value* pInput,
                                       llvm::Value* prevInputDimensionOffset,
                                       FunctionType& f) const;

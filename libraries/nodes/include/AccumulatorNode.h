@@ -9,10 +9,9 @@
 #pragma once
 
 // model
-#include "CompilableNodeUtilities.h"
 #include "CompilableNode.h"
+#include "CompilableNodeUtilities.h"
 #include "IRMapCompiler.h"
-#include "MapCompiler.h"
 #include "Model.h"
 #include "ModelTransformer.h"
 #include "Node.h"
@@ -37,8 +36,6 @@ namespace nodes
     public:
         /// @name Input and Output Ports
         /// @{
-        static constexpr const char* inputPortName = "input";
-        static constexpr const char* outputPortName = "output";
         const model::InputPort<ValueType>& input = _input;
         const model::OutputPort<ValueType>& output = _output;
         /// @}
@@ -58,17 +55,17 @@ namespace nodes
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+        std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
         /// <summary> Makes a copy of this node in the model being constructed by the transformer </summary>
-        virtual void Copy(model::ModelTransformer& transformer) const override;
+        void Copy(model::ModelTransformer& transformer) const override;
 
     protected:
-        virtual void Compute() const override;
-        virtual void Compile(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function) override;
-        virtual bool HasState() const override { return true; }
-        virtual void WriteToArchive(utilities::Archiver& archiver) const override;
-        virtual void ReadFromArchive(utilities::Unarchiver& archiver) override;
+        void Compute() const override;
+        void Compile(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function) override;
+        bool HasState() const override { return true; }
+        void WriteToArchive(utilities::Archiver& archiver) const override;
+        void ReadFromArchive(utilities::Unarchiver& archiver) override;
 
     private:
         void CompileLoop(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function, llvm::Value* accumulator);

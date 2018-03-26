@@ -17,7 +17,6 @@
 
 // stl
 #include <exception>
-#include <memory>
 #include <vector>
 
 namespace ell
@@ -33,9 +32,6 @@ namespace nodes
         /// @name Input and Output Ports
         /// @{
         static constexpr const char* conditionPortName = "condition";
-        static constexpr const char* input1PortName = "input1";
-        static constexpr const char* input2PortName = "input2";
-        static constexpr const char* outputPortName = "output";
         const model::InputPort<bool>& condition = _condition;
         const model::InputPort<ValueType>& input1 = _input1;
         const model::InputPort<ValueType>& input2 = _input2;
@@ -60,15 +56,16 @@ namespace nodes
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+        std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
         /// <summary> Makes a copy of this node in the model being constructed by the transformer </summary>
-        virtual void Copy(model::ModelTransformer& transformer) const override;
+        void Copy(model::ModelTransformer& transformer) const override;
 
     protected:
-        virtual void Compute() const override;
-        virtual void WriteToArchive(utilities::Archiver& archiver) const override;
-        virtual void ReadFromArchive(utilities::Unarchiver& archiver) override;
+        void Compute() const override;
+        void WriteToArchive(utilities::Archiver& archiver) const override;
+        void ReadFromArchive(utilities::Unarchiver& archiver) override;
+        bool HasState() const override { return false; }
 
     private:
         // Inputs

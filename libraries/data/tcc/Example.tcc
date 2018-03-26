@@ -36,14 +36,14 @@ namespace data
     {
         // deep copy of data vector
         using DataType = typename TargetExampleType::DataVectorType;
-        using MetadataType = typename TargetExampleType::MetadataType;
-        return TargetExampleType(std::make_shared<DataType>(_dataVector->template CopyAs<DataType>()), MetadataType(_metadata));
+        using TargetMetadataType = typename TargetExampleType::MetadataType;
+        return TargetExampleType(std::make_shared<DataType>(_dataVector->template CopyAs<DataType>()), TargetMetadataType(_metadata));
     }
 
     template <typename DataVectorType, typename MetadataType>
     void Example<DataVectorType, MetadataType>::Print(std::ostream& os) const
     {
-        _metadata.Print(os);
+        os << _metadata;
         os << "\t";
         _dataVector->Print(os);
     }

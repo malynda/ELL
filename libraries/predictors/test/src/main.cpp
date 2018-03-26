@@ -7,6 +7,7 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "ForestPredictorTests.h"
+#include "LinearPredictorTests.h"
 #include "NeuralNetworkPredictorTests.h"
 #include "ProtoNNPredictorTests.h"
 
@@ -19,6 +20,10 @@ int main()
 {
     // ForestPredictor
     ForestPredictorTest();
+
+    // LinearPredictor
+    LinearPredictorTest<double>();
+    LinearPredictorTest<float>();
 
     // NeuralNetworkPredictor
     ActivationTest<float>();
@@ -35,6 +40,9 @@ int main()
     BinaryConvolutionalLayerGemmTest<float>();
     SoftmaxLayerTest<float>();
     NeuralNetworkPredictorTest<float>();
+    RecurrentLayerTest<float>();
+    LSTMLayerTest<float>();
+    GRULayerTest<float>();
 
     ActivationTest<double>();
     LayerBaseTest<double>();
@@ -50,6 +58,10 @@ int main()
     BinaryConvolutionalLayerGemmTest<double>();
     SoftmaxLayerTest<double>();
     NeuralNetworkPredictorTest<double>();
+    RecurrentLayerTest<double>();
+    LSTMLayerTest<double>();
+    GRULayerTest<double>();
+    
     ConvolutionalArchiveTest<float>();
     BinaryConvolutionalArchiveTest<float>();
 

@@ -54,6 +54,12 @@ namespace data
     }
 
     template <typename ElementType>
+    DenseDataVector<ElementType>::DenseDataVector(std::vector<float> list)
+    {
+        AppendElements(std::move(list));
+    }
+
+    template <typename ElementType>
     double DenseDataVector<ElementType>::operator[](size_t index) const
     {
         if (index >= _data.size())
@@ -86,7 +92,7 @@ namespace data
         }
 
         ElementType storedValue = static_cast<ElementType>(value);
-        assert(storedValue - value <= 1.0e-6 && value - storedValue <= 1.0e-6);
+        assert(storedValue - value <= 1.0e-5 && value - storedValue <= 1.0e-5);
 
         if (index < _data.size())
         {

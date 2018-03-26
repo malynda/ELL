@@ -9,17 +9,23 @@
 
 #ifndef SWIG
 
+// math
+#include "Tensor.h"
+
 // neural network
 #include "Layer.h"
-
+#include "MathInterface.h"
 #include "ActivationLayer.h"
 #include "BatchNormalizationLayer.h"
 #include "BiasLayer.h"
 #include "BinaryConvolutionalLayer.h"
 #include "ConvolutionalLayer.h"
 #include "FullyConnectedLayer.h"
+#include "GRULayer.h"
 #include "InputLayer.h"
+#include "LSTMLayer.h"
 #include "PoolingLayer.h"
+#include "RegionDetectionLayer.h"
 #include "ScalingLayer.h"
 
 // stl
@@ -54,17 +60,11 @@ namespace neural
     using LayerType = ell::predictors::neural::LayerType;
     using PaddingScheme = ell::predictors::neural::PaddingScheme;
     using PaddingParameters = ell::predictors::neural::PaddingParameters;
+    using LayerShape = ell::api::math::TensorShape;
 
     //////////////////////////////////////////////////////////////////////////
     // Common types used by the neural layers
     //////////////////////////////////////////////////////////////////////////
-    struct LayerShape
-    {
-        size_t rows;
-        size_t columns;
-        size_t channels;
-    };
-
     struct LayerParameters
     {
         LayerShape inputShape;
@@ -109,6 +109,10 @@ namespace neural
         relu,
         leaky,
         sigmoid,
+        tanh,
+        softmax,
+        prelu,
+        hardSigmoid
     };
 
     template <typename ElementType>
@@ -123,6 +127,19 @@ namespace neural
         LayerType GetLayerType() const override { return LayerType::activation; }
 
         const ActivationType activation;
+    };
+
+    // Api projection for PReLUActivationLayer
+    template <typename ElementType>
+    class PReLUActivationLayer : public ActivationLayer<ElementType>
+    {
+    public:
+        PReLUActivationLayer(const LayerParameters& layerParameters, const ell::api::math::Tensor<ElementType>& alphaTensor)
+            : ActivationLayer<ElementType>(layerParameters, ActivationType::prelu), alpha(alphaTensor)
+        {
+        }
+
+        API_READONLY(ell::api::math::Tensor<ElementType> alpha);
     };
 
     // Api projection for BatchNormalizationLayer
@@ -173,7 +190,7 @@ namespace neural
     {
     public:
         BinaryConvolutionalLayer(const LayerParameters& layerParameters, const BinaryConvolutionalParameters& convolutionalParameters, const ell::api::math::Tensor<ElementType>& weightsTensor)
-            : Layer<ElementType>(layerParameters), weights(weightsTensor.data, weightsTensor.rows, weightsTensor.columns, weightsTensor.channels), convolutionalParameters(convolutionalParameters)
+            : Layer<ElementType>(layerParameters), weights(weightsTensor.data, weightsTensor.shape.rows, weightsTensor.shape.columns, weightsTensor.shape.channels), convolutionalParameters(convolutionalParameters)
         {
         }
 
@@ -192,7 +209,7 @@ namespace neural
     {
     public:
         ConvolutionalLayer(const LayerParameters& layerParameters, const ConvolutionalParameters& convolutionalParameters, const ell::api::math::Tensor<ElementType>& weightsTensor)
-            : Layer<ElementType>(layerParameters), weights(weightsTensor.data, weightsTensor.rows, weightsTensor.columns, weightsTensor.channels), convolutionalParameters(convolutionalParameters)
+            : Layer<ElementType>(layerParameters), weights(weightsTensor.data, weightsTensor.shape.rows, weightsTensor.shape.columns, weightsTensor.shape.channels), convolutionalParameters(convolutionalParameters)
         {
         }
 
@@ -208,11 +225,63 @@ namespace neural
     {
     public:
         FullyConnectedLayer(const LayerParameters& layerParameters, const ell::api::math::Tensor<ElementType>& weightsTensor)
-            : Layer<ElementType>(layerParameters), weights(weightsTensor.data, weightsTensor.rows, weightsTensor.columns, weightsTensor.channels)
+            : Layer<ElementType>(layerParameters), weights(weightsTensor.data, weightsTensor.shape.rows, weightsTensor.shape.columns, weightsTensor.shape.channels)
         {
         }
 
         LayerType GetLayerType() const override { return LayerType::fullyConnected; }
+
+        API_READONLY(ell::api::math::Tensor<ElementType> weights);
+    };
+
+    // Api projections for GRULayer
+    template <typename ElementType>
+    class GRULayer : public Layer<ElementType>
+    {
+    public:
+        GRULayer(const LayerParameters& layerParameters,
+                 const ell::api::math::Tensor<ElementType>& updateWeightsTensor,
+                 const ell::api::math::Tensor<ElementType>& resetWeightsTensor,
+                 const ell::api::math::Tensor<ElementType>& hiddenWeightsTensor,
+                 const ell::api::math::Tensor<ElementType>& updateBiasTensor,
+                 const ell::api::math::Tensor<ElementType>& resetBiasTensor,
+                 const ell::api::math::Tensor<ElementType>& hiddenBiasTensor,
+                 ActivationType activation,
+                 ActivationType recurrentActivation)
+            : Layer<ElementType>(layerParameters),
+            updateWeights(updateWeightsTensor),
+            resetWeights(resetWeightsTensor),
+            hiddenWeights(hiddenWeightsTensor),
+            updateBias(updateBiasTensor),
+            resetBias(resetBiasTensor),
+            hiddenBias(hiddenBiasTensor),
+            activation(activation), recurrentActivation(recurrentActivation)
+        {
+        }
+
+        LayerType GetLayerType() const override { return LayerType::gru; }
+
+        API_READONLY(ell::api::math::Tensor<ElementType> updateWeights);
+        API_READONLY(ell::api::math::Tensor<ElementType> resetWeights);
+        API_READONLY(ell::api::math::Tensor<ElementType> hiddenWeights);
+        API_READONLY(ell::api::math::Tensor<ElementType> updateBias);
+        API_READONLY(ell::api::math::Tensor<ElementType> resetBias);
+        API_READONLY(ell::api::math::Tensor<ElementType> hiddenBias);
+        ActivationType activation;
+        ActivationType recurrentActivation;
+    };
+
+    // Api projections for LSTMLayer
+    template <typename ElementType>
+    class LSTMLayer : public Layer<ElementType>
+    {
+    public:
+        LSTMLayer(const LayerParameters& layerParameters, const ell::api::math::Tensor<ElementType>& weightsTensor)
+            : Layer<ElementType>(layerParameters), weights(weightsTensor.data, weightsTensor.shape.rows, weightsTensor.shape.columns, weightsTensor.shape.channels)
+        {
+        }
+
+        LayerType GetLayerType() const override { return LayerType::lstm; }
 
         API_READONLY(ell::api::math::Tensor<ElementType> weights);
     };
@@ -239,6 +308,23 @@ namespace neural
 
         const PoolingType poolingType;
         const PoolingParameters poolingParameters;
+    };
+
+    // Api projection for RegionDetectionLayer
+    using RegionDetectionParameters = ell::predictors::neural::RegionDetectionParameters;
+
+    template <typename ElementType>
+    class RegionDetectionLayer : public Layer<ElementType>
+    {
+    public:
+        RegionDetectionLayer(const LayerParameters& layerParameters, const RegionDetectionParameters& detectionParameters)
+            : Layer<ElementType>(layerParameters), detectionParameters(detectionParameters)
+        {
+        }
+
+        LayerType GetLayerType() const override { return LayerType::region; }
+
+        const RegionDetectionParameters detectionParameters;
     };
 
     // Api projection for SoftmaxLayer

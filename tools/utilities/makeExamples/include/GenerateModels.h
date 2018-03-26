@@ -10,15 +10,12 @@
 
 // model
 #include "Model.h"
-#include "SteppableMap.h"
-
-// stl
-#include <chrono>
 
 namespace ell
 {
 model::Model GenerateIdentityModel(size_t dimension);
 model::Model GenerateTimesTwoModel(size_t dimension);
+template <typename ElementType> model::Model GenerateBroadcastTimesTwoModel(size_t dimension);
 model::Model GenerateIsEqualModel();
 model::Model GenerateArgMaxModel(size_t dimension);
 model::Model GenerateMultiOutModel(size_t dimension);
@@ -27,6 +24,4 @@ model::Model GenerateModel2();
 model::Model GenerateModel3();
 model::Model GenerateTreeModel(size_t numSplits);
 model::Model GenerateRefinedTreeModel(size_t numSplits);
-
-model::SteppableMap<std::chrono::steady_clock> GenerateSteppableMap(size_t dimension, int intervalMs);
 }

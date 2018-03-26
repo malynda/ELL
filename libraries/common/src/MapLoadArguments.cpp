@@ -9,7 +9,6 @@
 #include "MapLoadArguments.h"
 
 // model
-#include "DynamicMap.h"
 #include "Model.h"
 #include "Node.h"
 
@@ -63,14 +62,6 @@ namespace common
             "d",
             "Default size of input node",
             1);
-
-        parser.AddOption(
-            mapType,
-            "mapType",
-            "m",
-            "Choice of map type (must match input map file): simple, clockStep, sysClockStep",
-            { { "simple", MapType::simpleMap }, { "clockStep", MapType::steadyClockSteppableMap }, { "sysClockStep", MapType::systemClockSteppableMap } },
-            "simple");
     }
 
     std::string MapLoadArguments::GetInputFilename() const

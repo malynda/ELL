@@ -8,6 +8,7 @@
 
 #include "Node.h"
 #include "InputPort.h"
+#include "Model.h"
 #include "ModelTransformer.h"
 #include "OutputPort.h"
 
@@ -21,6 +22,15 @@ namespace ell
 {
 namespace model
 {
+    namespace
+    {
+        //
+        // Relevant archive format versions
+        //
+        constexpr utilities::ArchiveVersion noMetadataArchiveVersion = {utilities::ArchiveVersionNumbers::v0_initial};
+        constexpr utilities::ArchiveVersion metadataArchiveVersion = {utilities::ArchiveVersionNumbers::v3_model_metadata};
+    }
+
     Node::Node(const std::vector<InputPortBase*>& inputs, const std::vector<OutputPortBase*>& outputs)
         : _id(NodeId()), _inputs(inputs), _outputs(outputs){};
 
@@ -56,6 +66,16 @@ namespace model
             }
         }
         return nullptr;
+    }
+
+    InputPortBase* Node::GetInputPort(size_t portIndex)
+    {
+        return _inputs[portIndex];
+    }
+
+    const InputPortBase* Node::GetInputPort(size_t portIndex) const
+    {
+        return _inputs[portIndex];
     }
 
     OutputPortBase* Node::GetOutputPort(const std::string& portName)
@@ -203,21 +223,39 @@ namespace model
         os << ")" << std::endl;
     }
 
-    bool Node::HasState() const
+    utilities::ArchiveVersion Node::GetArchiveVersion() const
     {
-        return false;
+        if(_metadata.IsEmpty())
+        {
+            return noMetadataArchiveVersion;
+        }
+        else
+        {
+            return metadataArchiveVersion;
+        }
+    }
+
+    bool Node::CanReadArchiveVersion(const utilities::ArchiveVersion& version) const
+    {
+        return version >= noMetadataArchiveVersion && version <= metadataArchiveVersion;
     }
 
     void Node::WriteToArchive(utilities::Archiver& archiver) const
     {
         archiver["id"] << _id;
+        if(!_metadata.IsEmpty())
+        {
+            archiver["metadata"] << _metadata;
+        }
     }
 
     void Node::ReadFromArchive(utilities::Unarchiver& archiver)
     {
-        NodeId oldId;
+        NodeId oldId;        
         archiver["id"] >> oldId;
         _id = oldId;
+        archiver.OptionalProperty("metadata") >> _metadata;
+
         auto& context = archiver.GetContext();
         ModelSerializationContext& newContext = dynamic_cast<ModelSerializationContext&>(context);
         newContext.MapNode(oldId, this);

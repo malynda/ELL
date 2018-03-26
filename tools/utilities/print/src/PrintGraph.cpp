@@ -1,11 +1,12 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 //  Project:  Embedded Learning Library (ELL)
-//  File:     PrintModel.cpp (print)
+//  File:     PrintGraph.cpp (print)
 //  Authors:  Chris Lovett
 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#include "LayerInspector.h"
 #include "PrintModel.h"
 
 // utilities
@@ -13,7 +14,7 @@
 #include "OutputStreamImpostor.h"
 
 // model
-#include "DgmlGraph.h"
+#include "Graph.h"
 #include "InputPort.h"
 #include "Model.h"
 #include "NeuralNetworkPredictorNode.h"
@@ -21,30 +22,44 @@
 #include <iostream>
 #include <string>
 
+using namespace ell::utilities;
+
 namespace ell
 {
-void PrintGraph(const model::Model& model, std::ostream& out)
+extern std::string PaddingSchemeToString(ell::predictors::neural::PaddingScheme scheme);
+
+void PrintGraph(const model::Model& model, const std::string& outputFormat, std::ostream& out, bool includeNodeId)
 {
     // dump DGML graph of model
-    DgmlGraph graph;
+    Graph graph;
     model.Visit([&](const model::Node& node) {
         std::string typeName = node.GetRuntimeTypeName();
-        DgmlNode childNode = graph.GetOrCreateNode(to_string(node.GetId()), typeName);
+        std::string label = typeName;
+        if (includeNodeId)
+        {
+            label.insert(0, "<id:" + to_string(node.GetId()) + ">");
+        }
+        GraphNode& childNode = graph.GetOrCreateNode(to_string(node.GetId()), label);
 
         if (typeName == "NeuralNetworkPredictorNode<float>")
         {
             const ell::nodes::NeuralNetworkPredictorNode<float>& predictorNode = dynamic_cast<const ell::nodes::NeuralNetworkPredictorNode<float>&>(node);
             auto predictor = predictorNode.GetPredictor();
             auto layers = predictor.GetLayers();
-            DgmlNode& previousLayer = childNode;
+            GraphNode& previousLayer = childNode;
             int layerId = 0;
             for (auto ptr = layers.begin(), end = layers.end(); ptr != end; ptr++, layerId++)
             {
                 std::shared_ptr<ell::predictors::neural::Layer<float>> layer = *ptr;
-                auto shape = layer->GetLayerParameters().outputShape;
                 std::string layerName = layer->GetRuntimeTypeName();
-                DgmlNode& layerNode = graph.GetOrCreateNode(layerName + "(" + std::to_string(layerId) + ")", layerName);
-                layerNode.SetProperty("shape", "[" + std::to_string(shape[0]) + "," + std::to_string(shape[1]) + "," + std::to_string(shape[2]) + "]");
+                GraphNode& layerNode = graph.GetOrCreateNode(layerName + "(" + std::to_string(layerId) + ")", layerName);
+                std::vector<NameValue> result = InspectLayerParameters<float>(layer);
+                for (auto ptr = result.begin(), end = result.end(); ptr != end; ptr++)
+                {
+                    NameValue nv = *ptr;
+                    layerNode.SetProperty(nv.name, nv.value);
+                }
+
                 graph.GetOrCreateLink(previousLayer, layerNode, "dependson");
                 previousLayer = layerNode; // chain them together.
             }
@@ -57,13 +72,25 @@ void PrintGraph(const model::Model& model, std::ostream& out)
                 const model::Node* upstream = *ptr;
                 if (upstream != nullptr)
                 {
-                    DgmlNode& upstreamNode = graph.GetOrCreateNode(to_string(upstream->GetId()), upstream->GetRuntimeTypeName());
-                    graph.GetOrCreateLink(upstreamNode, childNode, "dependson");
+                    label = upstream->GetRuntimeTypeName();
+                    if (includeNodeId)
+                    {
+                        label.insert(0, "<id:" + to_string(upstream->GetId()) + ">");
+                    }
+                    GraphNode& nextNode = graph.GetOrCreateNode(to_string(upstream->GetId()), label);
+                    graph.GetOrCreateLink(childNode, nextNode, "");
                 }
             }
         }
     });
 
-    graph.Save(out);
+    if (outputFormat == "dgml")
+    {
+        graph.SaveDgml(out);
+    }
+    else
+    {
+        graph.SaveDot(out);
+    }
 }
 }

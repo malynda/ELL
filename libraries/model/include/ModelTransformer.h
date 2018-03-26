@@ -32,8 +32,9 @@ namespace model
     // Forward declarations
     class InputNodeBase;
 
-    template <typename ValueType>
-    class InputNode;
+    template <typename ValueType> class InputNode;
+
+    class MapCompiler;
 
     /// <summary> An action to perform on a node during transformation (refinement/compilation)
     enum class NodeAction
@@ -58,11 +59,22 @@ namespace model
         /// <param name='nodeActionFunction'> A function that indicates how to override the default refinement or compilation of a node </param>
         TransformContext(const NodeActionFunction& nodeActionFunction);
 
+        /// <summary> Constructor </summary>
+        ///
+        /// <param name='compiler'> The MapCompiler that is currently compiling the model </param>
+        /// <param name='nodeActionFunction'> A function that indicates how to override the default refinement or compilation of a node </param>
+        TransformContext(const MapCompiler* compiler, const NodeActionFunction& nodeActionFunction);
+
         /// <summary> Indicates if a node is compilable. </summary>
         ///
         /// <param name="node"> A node. </param>
         /// <returns> Returns true if the node is compilable. </returns>
         bool IsNodeCompilable(const Node& node) const;
+
+        /// <summary> Gets the map compiler. </summary>
+        ///
+        /// <returns> Returns a pointer to the map compiler (or nullptr if one isn't defined). </returns>
+        const MapCompiler* GetCompiler() const { return _compiler; }
 
         /// <summary> Adds a custom node action function to call during refinement </summary>
         ///
@@ -83,6 +95,7 @@ namespace model
 
     private:
         std::vector<NodeActionFunction> _nodeActionFunctions;
+        const MapCompiler* _compiler;
     };
 
     /// <summary> A utility class that maps output ports in a model to elements in a transformed model. </summary>
@@ -111,14 +124,14 @@ namespace model
         ///
         /// <param name="oldMap"> The port mapping from the original model to an intermediate state. </param>
         /// <param name="newMap"> The port mapping from the intermediate state to the new model. </param>
-        /// <returns> A new mapping from the original model outputs to the new model outputs. </returns> 
+        /// <returns> A new mapping from the original model outputs to the new model outputs. </returns>
         static PortOutputsMap ConcatenateMaps(const PortOutputsMap& oldMap, const PortOutputsMap& newMap);
 
     private:
         std::unordered_map<const OutputPortBase*, PortElementsBase> _map;
     };
 
-    /// <summary> A class that refines or copies models </summary>
+    /// <summary> A class that transforms models (including refinement and copying) </summary>
     class ModelTransformer
     {
     public:
@@ -173,61 +186,45 @@ namespace model
         /// <summary> Transforms the model by applying a transformation function to each node </summary>
         ///
         /// <param name="model"> The model to transform. </param>
-        /// <param name="transformFunction"> The function to apply on each node </param>
         /// <param name="context"> The TransformContext to use during the transformation </param>
+        /// <param name="transformFunction"> The function to apply on each node </param>
         ///
-        /// <returns> The refined Model. </returns>
-        Model TransformModel(const Model& model, const std::function<void(const Node&, ModelTransformer&)>& transformFunction, const TransformContext& context);
+        /// <returns> The transformed Model. </returns>
+        Model TransformModel(const Model& model, const TransformContext& context, const std::function<void(const Node&, ModelTransformer&)>& transformFunction);
 
-        /// <summary> Indicates if the last call to RefineModel produced a model that is compilable. </summary>
-        ///
-        /// <returns> true if the model returned by RefineModel is compilable. </returns>
-        /// <remarks> Only available after calling CopyModel or RefineModel. </remarks>
-        bool IsModelCompilable() const { return _isModelCompilable; }
+        /// <summary> Resets the internal state of the transformer </summary>
+        void Reset();
 
         /// <summary> Returns the port elements from the new model corresponding to the given port on the input model </summary>
         /// <remarks> Only available after calling CopyModel or RefineModel </remarks>
         template <typename ValueType>
-        PortElements<ValueType> GetCorrespondingOutputs(const OutputPort<ValueType>& port);
+        PortElements<ValueType> GetCorrespondingOutputs(const OutputPort<ValueType>& port) const;
 
         /// <summary> Returns the port elements from the new model corresponding to the given port on the input model </summary>
         /// <remarks> Only available after calling CopyModel or RefineModel </remarks>
-        PortElementsBase GetCorrespondingOutputs(const OutputPortBase& port);
+        PortElementsBase GetCorrespondingOutputs(const OutputPortBase& port) const;
 
         /// <summary> Returns the port elements from the new model corresponding to the given elements on the input model </summary>
         /// <remarks> Only available after calling CopyModel or RefineModel </remarks>
         template <typename ValueType>
-        PortElements<ValueType> GetCorrespondingOutputs(const PortElements<ValueType>& elements);
+        PortElements<ValueType> GetCorrespondingOutputs(const PortElements<ValueType>& elements) const;
 
         /// <summary> Returns the port elements from the new model corresponding to the given elements on the input model </summary>
         /// <remarks> Only available after calling CopyModel or RefineModel </remarks>
-        PortElementsBase GetCorrespondingOutputs(const PortElementsBase& elements);
+        PortElementsBase GetCorrespondingOutputs(const PortElementsBase& elements) const;
 
         /// <summary> Returns the input node from the new model corresponding to the given input node on the input model </summary>
         /// <remarks> Only available after calling CopyModel or RefineModel </remarks>
         template <typename ValueType>
-        InputNode<ValueType>* GetCorrespondingInputNode(const InputNode<ValueType>* node);
+        InputNode<ValueType>* GetCorrespondingInputNode(const InputNode<ValueType>* node) const;
 
         /// <summary> Returns the input node from the new model corresponding to the given input node on the input model </summary>
         /// <remarks> Only available after calling CopyModel or RefineModel </remarks>
-        InputNodeBase* GetCorrespondingInputNode(const InputNodeBase* node);
+        InputNodeBase* GetCorrespondingInputNode(const InputNodeBase* node) const;
 
         ///
         /// Functions used by node implementors
         ///
-
-        /// <summary> Transforms a set of output port references from the input model space to the output model space. Called by node implementors. </summary>
-        ///
-        /// <param name="elements"> The elements in the input model to transform to the output model space. </param>
-        /// <returns> A `PortElements` object representing the transformed elements in the space of the new model. </returns>
-        template <typename ValueType>
-        PortElements<ValueType> TransformPortElements(const PortElements<ValueType>& elements);
-
-        /// <summary> Transforms a set of output port references from the input model space to the output model space. Called by node implementors. </summary>
-        ///
-        /// <param name="elements"> The elements in the input model to transform to the output model space. </param>
-        /// <returns> A `PortElementsBase` object representing the transformed elements in the space of the new model. </returns>
-        PortElementsBase TransformPortElements(const PortElementsBase& elements);
 
         /// <summary> Creates a new node in the transformed model. Called by node implementors. </summary>
         ///
@@ -261,11 +258,33 @@ namespace model
         /// <returns> The context in use by the transformer. </returns>
         TransformContext& GetContext() { return _context; }
 
+        /// <summary> Get the context used by the transformer. Called by node implementors </summary>
+        ///
+        /// <returns> The context in use by the transformer. </returns>
+        const TransformContext& GetContext() const { return _context; }
+
+        //
+        // Deprecated functions
+        //
+
+        /// <summary> Transforms a set of output port references from the input model space to the output model space. DEPRECATED: use GetCorrespondingOutputs instead. </summary>
+        ///
+        /// <param name="elements"> The elements in the input model to transform to the output model space. </param>
+        /// <returns> A `PortElements` object representing the transformed elements in the space of the new model. </returns>
+        template <typename ValueType>
+        PortElements<ValueType> TransformPortElements(const PortElements<ValueType>& elements) const;
+
+        /// <summary> Transforms a set of output port references from the input model space to the output model space. DEPRECATED: use GetCorrespondingOutputs instead. </summary>
+        ///
+        /// <param name="elements"> The elements in the input model to transform to the output model space. </param>
+        /// <returns> A `PortElementsBase` object representing the transformed elements in the space of the new model. </returns>
+        PortElementsBase TransformPortElements(const PortElementsBase& elements) const;
+
     private:
         friend class Node;
 
         template <typename NodeType>
-        NodeType* GetCorrespondingInputNodeAs(const NodeType* node);
+        NodeType* GetCorrespondingInputNodeAs(const NodeType* node) const;
 
         // Collect nodes that are't compilable
         std::vector<const Node*> FindUncompilableNodes(const Model& model, const TransformContext& context) const;

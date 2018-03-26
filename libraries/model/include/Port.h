@@ -10,11 +10,10 @@
 
 // utilities
 #include "IArchivable.h"
+#include "PropertyBag.h"
 
 // stl
-#include <memory>
 #include <string>
-#include <vector>
 
 namespace ell
 {
@@ -40,8 +39,7 @@ namespace model
 
         Port() = default;
         Port(const Port& other) = delete;
-        Port(Port&& other) = default;
-        virtual ~Port() = default;
+        Port(Port&& other) = delete;
 
         /// <summary> Returns the node the output port connected to this port belongs to </summary>
         ///
@@ -78,21 +76,35 @@ namespace model
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+        std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
-
+        /// <summary> Get this object's metadata object. </summary>
+        ///
+        /// <returns> A reference to the PropertyBag containing the metadata for this object. </returns>
+        utilities::PropertyBag& GetMetadata() { return _metadata; }
+        
+        /// <summary> Get this object's metadata object. </summary>
+        ///
+        /// <returns> A const reference to the PropertyBag containing the metadata for this object. </returns>
+        const utilities::PropertyBag& GetMetadata() const { return _metadata; }
+        
     protected:
         Port(const class Node* node, std::string name, PortType type)
             : _node(node), _name(name), _type(type) {}
+        ~Port() override = default;
 
-        virtual void WriteToArchive(utilities::Archiver& archiver) const override;
-        virtual void ReadFromArchive(utilities::Unarchiver& archiver) override;
-
+        utilities::ArchiveVersion GetArchiveVersion() const override;
+        bool CanReadArchiveVersion(const utilities::ArchiveVersion& version) const override;
+        void WriteToArchive(utilities::Archiver& archiver) const override;
+        void ReadFromArchive(utilities::Unarchiver& archiver) override;
+    
     private:
+
         // _node keeps info on where the input is coming from
         const class Node* _node = nullptr;
         std::string _name;
         PortType _type = PortType::none;
+        utilities::PropertyBag _metadata;
     };
 
     /// <summary> Returns a string with the 'C' type name to use for the given `PortType` </summary>

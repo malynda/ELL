@@ -14,7 +14,7 @@ namespace neural
 {
 
     template <typename ElementType>
-    FullyConnectedLayer<ElementType>::FullyConnectedLayer(const LayerParameters& layerParameters, MatrixReferenceType& weights) :
+    FullyConnectedLayer<ElementType>::FullyConnectedLayer(const LayerParameters& layerParameters, ConstMatrixReferenceType& weights) :
         Layer<ElementType>(layerParameters),
         _weights(weights.NumRows(), weights.NumColumns()),
         _shapedInput(layerParameters.input.Size()),
@@ -73,7 +73,7 @@ namespace neural
             }
         }
 
-        math::Operations::Multiply((ElementType)1.0f, _weights, _shapedInput, (ElementType)0.0f, _outputVector);
+        math::MultiplyScaleAddUpdate((ElementType)1.0f, _weights, _shapedInput, (ElementType)0.0f, _outputVector);
 
         // Reshape the output
         columnIndex = 0;

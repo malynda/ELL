@@ -8,11 +8,10 @@
 
 #pragma once
 
-#include "NeuralNetworkLayerNode.h"
-
 // model
 #include "IRMapCompiler.h"
 #include "ModelTransformer.h"
+#include "NeuralNetworkLayerNode.h"
 #include "PortElements.h"
 
 // predictors
@@ -36,14 +35,12 @@ namespace nodes
 
         /// @name Input and Output Ports
         /// @{
-        using BaseType::inputPortName; // "input"
-        using BaseType::outputPortName; // "output"
         using BaseType::input;
         using BaseType::output;
         /// @}
 
         BinaryConvolutionalLayerNode() = default;
-        
+
         /// <summary> Constructor from a layer. </summary>
         ///
         /// <param name="input"> </param>
@@ -58,76 +55,84 @@ namespace nodes
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+        std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
         /// <summary> Indicates if this node is able to compile itself to code. </summary>
-        virtual bool IsCompilable() const override { return false; }
+        bool IsCompilable(const model::MapCompiler* compiler) const override { return false; }
 
     protected:
-        virtual bool Refine(model::ModelTransformer& transformer) const override;
-        virtual bool HasState() const override { return true; }
+        bool Refine(model::ModelTransformer& transformer) const override;
 
     private:
-        std::vector<int64_t> GetCompressedFilterWeights() const;
+        template <typename PackedBitsType>
+        std::vector<PackedBitsType> GetCompressedFilterWeights() const;
+
         std::vector<ValueType> GetFilterMeans() const;
+
+        template <typename PackedBitsType>
+        std::vector<PackedBitsType> GetCompressedInputPaddingMask() const;
+
+        std::vector<int> GetInputPaddingMaskSums() const;
+
+        template <typename PackedBitsType>
+        model::PortElements<ValueType> AddRefinedNodes(model::ModelTransformer& transformer, const model::PortElements<ValueType>& input) const;
     };
 
     //
-    // BinarizeAndReshapeImageNode
+    // BinaryReceptiveFieldMatrixNode
     //
-    template <typename ValueType, typename PackedBitsType = int64_t>
-    class BinarizeAndReshapeImageNode : public model::CompilableNode
+    template <typename ValueType, typename PackedBitsType>
+    class BinaryReceptiveFieldMatrixNode : public model::CompilableNode
     {
     public:
         /// @name Input and Output Ports
         /// @{
-        static constexpr const char* inputPortName = "input";
-        static constexpr const char* outputPortName = "output";
         const model::InputPort<ValueType>& input = _input;
         const model::OutputPort<PackedBitsType>& output = _output;
         /// @}
 
-        BinarizeAndReshapeImageNode();
-        BinarizeAndReshapeImageNode(const model::PortElements<ValueType>& input,
-                                    const predictors::neural::BinaryConvolutionalParameters& convolutionalParameters,
-                                    const PortMemoryLayout& inputMemoryLayout,
-                                    const PortMemoryLayout& outputMemoryLayout);
+        /// <summary></summary>
+        BinaryReceptiveFieldMatrixNode();
+
+        /// <summary></summary>
+        BinaryReceptiveFieldMatrixNode(const model::PortElements<ValueType>& input,
+                                       const predictors::neural::BinaryConvolutionalParameters& convolutionalParameters,
+                                       const model::PortMemoryLayout& inputMemoryLayout,
+                                       const model::PortMemoryLayout& outputMemoryLayout);
 
         /// <summary> Gets information about the input memory layout </summary>
-        const PortMemoryLayout& GetInputMemoryLayout() const { return _inputMemoryLayout; }
-        PortMemoryLayout& GetInputMemoryLayout() { return _inputMemoryLayout; }
+        const model::PortMemoryLayout& GetInputMemoryLayout() const { return _inputMemoryLayout; }
+
+        /// <summary></summary>
+        model::PortMemoryLayout& GetInputMemoryLayout() { return _inputMemoryLayout; }
 
         /// <summary> Gets information about the output memory layout </summary>
-        const PortMemoryLayout& GetOutputMemoryLayout() const { return _outputMemoryLayout; }
-        PortMemoryLayout& GetOutputMemoryLayout() { return _outputMemoryLayout; }
+        const model::PortMemoryLayout& GetOutputMemoryLayout() const { return _outputMemoryLayout; }
+
+        /// <summary></summary>
+        model::PortMemoryLayout& GetOutputMemoryLayout() { return _outputMemoryLayout; }
 
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        static std::string GetTypeName() { return utilities::GetCompositeTypeName<ValueType, PackedBitsType>("BinarizeAndReshapeImageNode"); }
+        static std::string GetTypeName() { return utilities::GetCompositeTypeName<ValueType, PackedBitsType>("BinaryReceptiveFieldMatrixNode"); }
 
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+        std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
     protected:
-        virtual void Copy(model::ModelTransformer& transformer) const override;
+        void Copy(model::ModelTransformer& transformer) const override;
         void Compute() const override;
-        virtual void Compile(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function) override;
-        virtual bool HasState() const override { return false; }
-
-        virtual void WriteToArchive(utilities::Archiver& archiver) const override
-        {
-            throw utilities::LogicException(utilities::LogicExceptionErrors::notImplemented);
-        }
-
-        virtual void ReadFromArchive(utilities::Unarchiver& archiver) override
-        {
-            throw utilities::LogicException(utilities::LogicExceptionErrors::notImplemented);
-        }
+        void Compile(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function) override;
+        bool HasState() const override { return false; }
+        void WriteToArchive(utilities::Archiver& archiver) const override;
+        void ReadFromArchive(utilities::Unarchiver& archiver) override;
 
     private:
+        emitters::IRFunctionEmitter GetTaskFunction(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function);
+
         // Input
         model::InputPort<ValueType> _input;
 
@@ -135,24 +140,26 @@ namespace nodes
         model::OutputPort<PackedBitsType> _output;
 
         predictors::neural::BinaryConvolutionalParameters _convolutionalParameters;
-        PortMemoryLayout _inputMemoryLayout;
-        PortMemoryLayout _outputMemoryLayout;
+        model::PortMemoryLayout _inputMemoryLayout;
+        model::PortMemoryLayout _outputMemoryLayout;
     };
 
     //
     // BinaryXnorNode
     //
-    template <typename ValueType, typename PackedBitsType = int64_t>
+    template <typename ValueType, typename PackedBitsType>
     class BinaryXnorNode : public model::CompilableNode
     {
     public:
         /// @name Input and Output Ports
         /// @{
-        static constexpr const char* inputPortName = "input";
+        static constexpr const char* inputPaddingMasksPortName = "inputPaddingMasks";
+        static constexpr const char* inputPaddingMaskSumsPortName = "inputPaddingMaskSums";
         static constexpr const char* filterWeightsPortName = "filterWeights";
         static constexpr const char* filterMeansPortName = "filterMeans";
-        static constexpr const char* outputPortName = "output";
         const model::InputPort<PackedBitsType>& input = _input;
+        const model::InputPort<PackedBitsType>& inputPaddingMasks = _inputPaddingMasks;
+        const model::InputPort<int>& inputPaddingMaskSums = _inputPaddingMaskSums;
         const model::InputPort<PackedBitsType>& filterWeights = _filterWeights;
         const model::InputPort<ValueType>& filterMeans = _filterMeans;
         const model::OutputPort<ValueType>& output = _output;
@@ -163,24 +170,30 @@ namespace nodes
 
         /// <summary> Constructor. </summary>
         ///
-        /// <param name="input"> The ports to get input data from. </param>
+        /// <param name="input"> The image data after being expanded into a GEMM-friendly order, binarized, and packed (via the BinaryReceptiveFieldMatrixNode). </param>
+        /// <param name="inputPaddingMasks"> The packed padding masks for the input data. </param>
+        /// <param name="inputPaddingMaskSums"> The sum of padding pixels per row of the shaped input data. </param>
         /// <param name="filterWeights"> The packed binary weights for the convolutional filters. </param>
         /// <param name="filterMeans"> The real-valued means of the convolutional filters. </param>
         /// <param name="convolutionalParameters"> The convolutional parameters. </param>
+        /// <param name="inputPaddingParameters"> The input padding parameters. </param>
         /// <param name="inputMemoryLayout"> The layout of the input data. </param>
         /// <param name="outputMemoryLayout"> The layout of the output data. </param>
         BinaryXnorNode(const model::PortElements<PackedBitsType>& input,
+                       const model::PortElements<PackedBitsType>& inputPaddingMasks,
+                       const model::PortElements<int>& inputPaddingMaskSums,
                        const model::PortElements<PackedBitsType>& filterWeights,
                        const model::PortElements<ValueType>& filterMeans,
                        const predictors::neural::BinaryConvolutionalParameters& convolutionalParameters,
-                       const PortMemoryLayout& inputMemoryLayout,
-                       const PortMemoryLayout& outputMemoryLayout);
+                       const predictors::neural::PaddingParameters& inputPaddingParameters,
+                       const model::PortMemoryLayout& inputMemoryLayout,
+                       const model::PortMemoryLayout& outputMemoryLayout);
 
-        /// <summary> Gets information about the input memory layout </summary>
-        const PortMemoryLayout& GetInputMemoryLayout() const { return _inputMemoryLayout; }
+        /// <summary> Gets information about the input memory layout of the original BinaryConvolutionalLayoutNode </summary>
+        const model::PortMemoryLayout& GetInputMemoryLayout() const { return _inputMemoryLayout; }
 
         /// <summary> Gets information about the output memory layout </summary>
-        const PortMemoryLayout& GetOutputMemoryLayout() const { return _outputMemoryLayout; }
+        const model::PortMemoryLayout& GetOutputMemoryLayout() const { return _outputMemoryLayout; }
 
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
@@ -190,27 +203,50 @@ namespace nodes
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+        std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
     protected:
-        virtual void Copy(model::ModelTransformer& transformer) const override;
+        void Copy(model::ModelTransformer& transformer) const override;
         void Compute() const override;
-        virtual void Compile(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function) override;
-        virtual bool HasState() const override { return true; }
+        void Compile(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function) override;
+        void ComputeFilterOutput(model::IRMapCompiler& compiler,
+                                 emitters::IRFunctionEmitter& function,
+                                 llvm::Value* pInput,
+                                 llvm::Value* pFilterWeights,
+                                 llvm::Value* pFilterMeans,
+                                 llvm::Value* pInputPaddingMask,
+                                 llvm::Value* pInputPaddingMaskSums,
+                                 llvm::Value* pOutput,
+                                 llvm::Value* filterIndex,
+                                 bool hasZeroPadding,
+                                 int outputColumns,
+                                 int packedRowSize,
+                                 int packedRowStride,
+                                 bool useVectorInstructions,
+                                 int vectorSize,
+                                 int numVectorBlocks);
 
-        virtual void WriteToArchive(utilities::Archiver& archiver) const override
-        {
-            throw utilities::LogicException(utilities::LogicExceptionErrors::notImplemented);
-        }
-
-        virtual void ReadFromArchive(utilities::Unarchiver& archiver) override
-        {
-            throw utilities::LogicException(utilities::LogicExceptionErrors::notImplemented);
-        }
+        bool HasState() const override { return true; } // stored state: convolutional parameters and input/output memory layouts
+        void WriteToArchive(utilities::Archiver& archiver) const override;
+        void ReadFromArchive(utilities::Unarchiver& archiver) override;
 
     private:
+        void EmitInnerLoop(emitters::IRFunctionEmitter& function,
+                           llvm::Value* reshapedInput,
+                           llvm::Value* paddingMask,
+                           llvm::Value* weights,
+                           llvm::Value* xorSumVariable,
+                           llvm::Function* popCountFunction,
+                           int startBlock,
+                           int numBlocks,
+                           bool hasZeroPadding);
+
+        emitters::IRFunctionEmitter GetTaskFunction(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function);
+
         // Input
         model::InputPort<PackedBitsType> _input;
+        model::InputPort<PackedBitsType> _inputPaddingMasks;
+        model::InputPort<int> _inputPaddingMaskSums;
         model::InputPort<PackedBitsType> _filterWeights;
         model::InputPort<ValueType> _filterMeans;
 
@@ -218,8 +254,9 @@ namespace nodes
         model::OutputPort<ValueType> _output;
 
         predictors::neural::BinaryConvolutionalParameters _convolutionalParameters;
-        PortMemoryLayout _inputMemoryLayout;
-        PortMemoryLayout _outputMemoryLayout;
+        predictors::neural::PaddingParameters _inputPaddingParameters;
+        model::PortMemoryLayout _inputMemoryLayout;
+        model::PortMemoryLayout _outputMemoryLayout;
     };
 }
 }

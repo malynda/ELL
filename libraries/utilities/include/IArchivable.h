@@ -8,9 +8,9 @@
 
 #pragma once
 
+#include "ArchiveVersion.h"
 #include "Archiver.h"
 #include "Exception.h"
-#include "ObjectArchive.h"
 #include "TypeName.h"
 
 // stl
@@ -29,19 +29,6 @@ namespace utilities
     public:
         virtual ~IArchivable() = default;
 
-        /// <summary> Create an `ObjectArchive` from an object </summary>
-        ///
-        /// <returns> The `ObjectArchive` describing the object </returns>
-        ObjectArchive GetDescription() const;
-
-        /// <summary> Creates an object from an `ObjectArchive` </summary>
-        ///
-        /// <typeparam name="ValueType"> The type of the object to retrieve </typeparam>
-        /// <param name="archive"> The `ObjectArchive` to get the object from </param>
-        /// <returns> The new object </returns>
-        template <typename ValueType>
-        static ValueType CreateObject(const ObjectArchive& archive);
-
         /// <summary> Gets the name of this type. </summary>
         ///
         /// <returns> The name of this type. </returns>
@@ -52,16 +39,25 @@ namespace utilities
         /// <returns> The name of this type. </returns>
         virtual std::string GetRuntimeTypeName() const { return GetTypeName(); }
 
+        /// <summary></summary>
         virtual bool ArchiveAsPrimitive() const { return false; }
 
     protected:
         friend class Archiver;
         friend class Unarchiver;
+        friend ObjectArchive GetDescription(const IArchivable& object);
+        template <typename ValueType>
+        friend ValueType CreateObject(const ObjectArchive& archive);
 
         /// <summary> Gets the archive version of the object. </summary>
         ///
         /// <returns> The archive version of the object. </summary>
         virtual ArchiveVersion GetArchiveVersion() const { return { 0 }; }
+
+        /// <summary> Indicates if this object can unarchive an object with the given version number. </summary>
+        ///
+        /// <returns> The archive version of the object. </summary>
+        virtual bool CanReadArchiveVersion(const ArchiveVersion& version) const;
 
         /// <summary> Writes the object to an archiver. </summary>
         ///
@@ -76,9 +72,7 @@ namespace utilities
 
     class ArchivedAsPrimitive : public IArchivable
     {
-        virtual bool ArchiveAsPrimitive() const { return true; }
+        bool ArchiveAsPrimitive() const override { return true; }
     };
 }
 }
-
-#include "../tcc/IArchivable.tcc"

@@ -8,9 +8,6 @@
 
 #include "CompileArguments.h"
 
-// utilities
-#include "Files.h"
-
 namespace ell
 {
 void ParsedCompileArguments::AddArgs(utilities::CommandLineParser& parser)
@@ -20,14 +17,14 @@ void ParsedCompileArguments::AddArgs(utilities::CommandLineParser& parser)
     parser.AddOption(
         outputHeader,
         "header",
-        "",
+        "hh",
         "Write out a header file",
         false);
 
     parser.AddOption(
         outputIr,
         "ir",
-        "",
+        "ir",
         "Write out an LLVM IR (.ll) file",
         false);
 
@@ -77,97 +74,14 @@ void ParsedCompileArguments::AddArgs(utilities::CommandLineParser& parser)
         outputDirectory,
         "outputDirectory",
         "od",
-        "Output directory for compiled model files (if none specified, use the input directory",
-        "");
-
-    parser.AddDocumentationString("");
-    parser.AddDocumentationString("Compiler options");
-
-    parser.AddOption(
-        compiledModuleName,
-        "compiledModuleName",
-        "cmn",
-        "Name for compiled module",
-        "ELL");
-
-    parser.AddOption(
-        compiledFunctionName,
-        "compiledFunctionName",
-        "cfn",
-        "Name for compiled function (if none specified, use <moduleName>_predict",
+        "Output directory for compiled model files (if none specified, use the input directory)",
         "");
 
     parser.AddOption(
-        profile,
-        "profile",
-        "p",
-        "Emit profiling code",
-        false);
-
-    parser.AddOption(
-        optimize,
-        "optimize",
-        "opt",
-        "Optimize output code",
-        true);
-
-    parser.AddOption(
-        useBlas,
-        "blas",
-        "",
-        "Emit code that calls BLAS",
-        true);
-
-    parser.AddOption(
-        foldLinearOperations,
-        "foldLinearOps",
-        "",
-        "Fold sequences of linear operations with constant coefficients into a single operation",
-        true);
-
-    parser.AddDocumentationString("");
-    parser.AddDocumentationString("Target device options");
-    parser.AddOption(
-        target,
-        "target",
-        "t",
-        "target name",
-        { { "host" }, { "pi0" }, { "pi3" }, {"pi3_64"}, { "mac" }, { "linux" }, { "windows" }, { "ios" }, { "aarch64" } },
-        "host");
-
-    parser.AddOption(
-        numBits,
-        "numBits",
-        "b",
-        "Number of bits for target [0 == auto]",
-        0);
-
-    parser.AddOption(
-        cpu,
-        "cpu",
-        "cpu",
-        "The CPU target for generating code",
-        "");
-
-    parser.AddOption(
-        targetTriple,
-        "triple",
-        "",
-        "The triple describing the target architecture",
-        "");
-
-    parser.AddOption(
-        targetDataLayout,
-        "datalayout",
-        "",
-        "The string describing the target data layout",
-        "");
-
-    parser.AddOption(
-        targetFeatures,
-        "features",
-        "",
-        "A string describing target-specific features to enable or disable (these are LLVM attributes, in the format the llc -mattr option uses)",
+        outputFilenameBase,
+        "outputFilenameBase",
+        "ob",
+        "Base filename for compiled model files (if none specified, use the input model filename)",
         "");
 
     parser.AddDocumentationString("");

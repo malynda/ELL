@@ -17,7 +17,8 @@
 #include "IArchivable.h"
 
 // stl
-#include <iostream>
+#include <string>
+#include <ostream>
 
 namespace ell
 {
@@ -74,8 +75,8 @@ namespace predictors
         void PrintLine(std::ostream& os, size_t tabs = 0) const;
 
     protected:
-        virtual void WriteToArchive(utilities::Archiver& archiver) const override;
-        virtual void ReadFromArchive(utilities::Unarchiver& archiver) override;
+        void WriteToArchive(utilities::Archiver& archiver) const override;
+        void ReadFromArchive(utilities::Unarchiver& archiver) override;
 
     private:
         size_t _index;

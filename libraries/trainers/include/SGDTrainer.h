@@ -38,24 +38,23 @@ namespace trainers
     /// Implements the averaged stochastic gradient descent algorithm on an L2 regularized empirical
     /// loss. This class must be have a derived class that implements DoFirstStep(), DoNextStep(), and CalculatePredictors().
     /// </summary>
-    /// <typeparam name="DerivedType"> The derived class (curiously recurring template pattern). </typeparam>
-    class SGDTrainerBase : public ITrainer<predictors::LinearPredictor>
+    class SGDTrainerBase : public ITrainer<predictors::LinearPredictor<double>>
     {
     public:
-        using PredictorType = predictors::LinearPredictor;
+        using PredictorType = predictors::LinearPredictor<double>;
 
         /// <summary> Sets the trainer's dataset. </summary>
         ///
         /// <param name="anyDataset"> A dataset. </param>
-        virtual void SetDataset(const data::AnyDataset& anyDataset) override;
+        void SetDataset(const data::AnyDataset& anyDataset) override;
 
         /// <summary> Updates the state of the trainer by performing a learning epoch. </summary>
-        virtual void Update() override;
+        void Update() override;
 
         /// <summary> Returns The averaged predictor. </summary>
         ///
         /// <returns> A const reference to the averaged predictor. </returns>
-        virtual const predictors::LinearPredictor& GetPredictor() const override { return GetAveragedPredictor(); }
+        const predictors::LinearPredictor<double>& GetPredictor() const override { return GetAveragedPredictor(); }
 
     protected:
         // Instances of the base class cannot be created directly
@@ -96,11 +95,11 @@ namespace trainers
         /// <summary> Returns a const reference to the averaged predictor. </summary>
         ///
         /// <returns> A const reference to the averaged predictor. </returns>
-        virtual const PredictorType& GetAveragedPredictor() const override { return _averagedPredictor; }
+        const PredictorType& GetAveragedPredictor() const override { return _averagedPredictor; }
 
     protected:
-        virtual void DoFirstStep(const data::AutoDataVector& x, double y, double weight) override;
-        virtual void DoNextStep(const data::AutoDataVector& x, double y, double weight) override;
+        void DoFirstStep(const data::AutoDataVector& x, double y, double weight) override;
+        void DoNextStep(const data::AutoDataVector& x, double y, double weight) override;
 
     private:
         LossFunctionType _lossFunction;
@@ -140,11 +139,11 @@ namespace trainers
         /// <summary> Returns a const reference to the averaged predictor. </summary>
         ///
         /// <returns> A const reference to the averaged predictor. </returns>
-        virtual const PredictorType& GetAveragedPredictor() const override;
+        const PredictorType& GetAveragedPredictor() const override;
 
     protected:
-        virtual void DoFirstStep(const data::AutoDataVector& x, double y, double weight) override;
-        virtual void DoNextStep(const data::AutoDataVector& x, double y, double weight) override;
+        void DoFirstStep(const data::AutoDataVector& x, double y, double weight) override;
+        void DoNextStep(const data::AutoDataVector& x, double y, double weight) override;
 
     private:
         LossFunctionType _lossFunction;
@@ -193,11 +192,11 @@ namespace trainers
         /// <summary> Returns a const reference to the averaged predictor. </summary>
         ///
         /// <returns> A const reference to the averaged predictor. </returns>
-        virtual const PredictorType& GetAveragedPredictor() const override;
+        const PredictorType& GetAveragedPredictor() const override;
 
     protected:
-        virtual void DoFirstStep(const data::AutoDataVector& x, double y, double weight) override;
-        virtual void DoNextStep(const data::AutoDataVector& x, double y, double weight) override;
+        void DoFirstStep(const data::AutoDataVector& x, double y, double weight) override;
+        void DoNextStep(const data::AutoDataVector& x, double y, double weight) override;
 
     private:
         LossFunctionType _lossFunction;
@@ -237,7 +236,7 @@ namespace trainers
     ///
     /// <returns> A linear trainer </returns>
     template <typename LossFunctionType>
-    std::unique_ptr<trainers::ITrainer<predictors::LinearPredictor>> MakeSGDTrainer(const LossFunctionType& lossFunction, const SGDTrainerParameters& parameters);
+    std::unique_ptr<trainers::ITrainer<predictors::LinearPredictor<double>>> MakeSGDTrainer(const LossFunctionType& lossFunction, const SGDTrainerParameters& parameters);
 
     /// <summary> Makes a SparseDataSGD linear trainer. </summary>
     ///
@@ -247,7 +246,7 @@ namespace trainers
     ///
     /// <returns> A linear trainer </returns>
     template <typename LossFunctionType>
-    std::unique_ptr<trainers::ITrainer<predictors::LinearPredictor>> MakeSparseDataSGDTrainer(const LossFunctionType& lossFunction, const SGDTrainerParameters& parameters);
+    std::unique_ptr<trainers::ITrainer<predictors::LinearPredictor<double>>> MakeSparseDataSGDTrainer(const LossFunctionType& lossFunction, const SGDTrainerParameters& parameters);
 
     /// <summary> Makes a SparseDataCenteredSGD linear trainer. </summary>
     ///
@@ -258,7 +257,7 @@ namespace trainers
     ///
     /// <returns> A linear trainer </returns>
     template <typename LossFunctionType>
-    std::unique_ptr<trainers::ITrainer<predictors::LinearPredictor>> MakeSparseDataCenteredSGDTrainer(const LossFunctionType& lossFunction, math::RowVector<double> center, const SGDTrainerParameters& parameters);
+    std::unique_ptr<trainers::ITrainer<predictors::LinearPredictor<double>>> MakeSparseDataCenteredSGDTrainer(const LossFunctionType& lossFunction, math::RowVector<double> center, const SGDTrainerParameters& parameters);
 }
 }
 

@@ -1,38 +1,45 @@
 ####################################################################################################
-##
+#
 # Project:  Embedded Learning Library (ELL)
 # File:     darknet_to_ell_impporter_test.py (importers)
 # Authors:  Byron Changuion
 #
 # Requires: Python 3.x
-##
+#
 ####################################################################################################
-from __future__ import print_function
+
+import sys
+import os
+import unittest
+import getopt
+import configparser
+import re
+import struct
+import traceback
+import inspect
+import logging
+
+import numpy as np
+_logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 # Try to import ELL. If it doesn't exist it means it has not been built,
 # so don't run the tests.
 SkipTests = False
 try:
-    import sys
-    sys.path.append('./..')
-    sys.path.append('./../../../../interfaces/python')
-    sys.path.append('./../../../../interfaces/python/Release')
-    sys.path.append('./../../../../interfaces/python/Debug')
-    sys.path.append('./../../../../interfaces/python/utilities')
-    import unittest
-    import getopt
-    import os
-    import configparser
-    import re
-    import struct
-    import traceback
-    import inspect
-    import numpy as np
-    import ELL
-    import ell_utilities
+    script_path = os.path.dirname(os.path.abspath(__file__))
+    sys.path.append(os.path.join(script_path, "..", "..", "..", "utilities", "pythonlibs"))
+    sys.path.append(os.path.join(script_path, '..'))
+    import find_ell
+    import ell
     import darknet_to_ell
-except Exception:
-    SkipTests = True
+except ImportError:
+    errorType, value, traceback = sys.exc_info()
+    if "Could not find ell package" in str(value):
+        _logger.info("Python was not built, so skipping test")
+        SkipTests = True
+    else:
+        raise value
 
 
 # Load a test darknet model and verify its output.
@@ -49,7 +56,7 @@ class DarknetModelTestCase(unittest.TestCase):
 
     def test_darknet_model(self):
         # Create synthetic input data
-        input1 = np.arange(28 * 28, dtype=np.float).reshape(28, 28, 1) / 255
+        input1 = np.arange(28 * 28, dtype=np.float).reshape(28, 28, 1)
         # Create an ELL predictor from the darknet model files
         predictor = darknet_to_ell.predictor_from_darknet_model(
             'unittest.cfg', 'unittest.weights')
@@ -72,17 +79,16 @@ class DarknetModelTestCase(unittest.TestCase):
             result2, expectedResult2, 5, 'prediction of second input does not match expected results!')
 
         # create a map and save to file
-        ell_map = ell_utilities.ell_map_from_float_predictor(predictor)
+        ell_map = ell.neural.utilities.ell_map_from_float_predictor(predictor)
         ell_map.Save("darknet_test.map")
 
-        # create a steppable map and save to file
-        ell_steppable_map = ell_utilities.ell_steppable_map_from_float_predictor(
-            predictor, 100, "DarknetTestInputCallback", "DarknetTestOutputCallback")
-        ell_steppable_map.Save("darknet_steppable_test.map")
+        # create a map and save to file
+        ell_map = ell.neural.utilities.ell_map_from_float_predictor(predictor,
+            step_interval_msec=100, lag_threshold_msec=150, function_prefix="DarknetTest")
+        ell_map.Save("darknet_steppable_test.map")
 
         return
 
 
 if __name__ == '__main__':
-    if not SkipTests:
-        unittest.main()
+    unittest.main()

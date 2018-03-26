@@ -9,7 +9,7 @@
 #include "LoadModel.h"
 
 // model
-#include "DynamicMap.h"
+#include "Map.h"
 #include "InputNode.h"
 #include "Model.h"
 #include "OutputNode.h"
@@ -17,17 +17,30 @@
 // nodes
 #include "BinaryOperationNode.h"
 #include "BinaryPredicateNode.h"
+#include "BroadcastFunctionNode.h"
+#include "BufferNode.h"
+#include "ClockNode.h"
+#include "DCTNode.h"
+#include "ClockNode.h"
+#include "CompiledActivationFunctions.h"
 #include "DelayNode.h"
 #include "DotProductNode.h"
 #include "ExtremalValueNode.h"
+#include "FFTNode.h"
 #include "ForestPredictorNode.h"
-#include "L2NormNode.h"
+#include "HammingWindowNode.h"
+#include "IIRFilterNode.h"
+#include "L2NormSquaredNode.h"
 #include "LinearPredictorNode.h"
+#include "FilterBankNode.h"
+#include "MatrixMatrixMultiplyNode.h"
+#include "MatrixVectorProductNode.h"
 #include "MovingAverageNode.h"
 #include "MovingVarianceNode.h"
 #include "MultiplexerNode.h"
 #include "NeuralNetworkPredictorNode.h"
 #include "ProtoNNPredictorNode.h"
+#include "ReceptiveFieldMatrixNode.h"
 #include "ReorderDataNode.h"
 #include "SinkNode.h"
 #include "SourceNode.h"
@@ -45,123 +58,12 @@
 #include "JsonArchiver.h"
 
 // stl
-#include <chrono>
 #include <cstdint>
 
 namespace ell
 {
 namespace common
 {
-    model::Model GetModel1()
-    {
-        // For now, just create a model and return it
-        const size_t dimension = 3;
-        model::Model model;
-        auto inputNode = model.AddNode<model::InputNode<double>>(dimension);
-        auto mean8 = model.AddNode<nodes::MovingAverageNode<double>>(inputNode->output, 8);
-        auto var8 = model.AddNode<nodes::MovingVarianceNode<double>>(inputNode->output, 8);
-        auto mean16 = model.AddNode<nodes::MovingAverageNode<double>>(inputNode->output, 16);
-        auto var16 = model.AddNode<nodes::MovingVarianceNode<double>>(inputNode->output, 16);
-
-        // classifier
-        auto inputs = model::Concat(model::MakePortElements(mean8->output), model::MakePortElements(var8->output), model::MakePortElements(mean16->output), model::MakePortElements(var16->output));
-        predictors::LinearPredictor predictor(inputs.Size());
-        // Set some values into the predictor's vector
-        for (size_t index = 0; index < inputs.Size(); ++index)
-        {
-            predictor.GetWeights()[index] = (double)(index % 5);
-        }
-        model.AddNode<nodes::LinearPredictorNode>(inputs, predictor);
-        return model;
-    }
-
-    model::Model GetModel2()
-    {
-        const size_t dimension = 3;
-        model::Model model;
-        auto inputNode = model.AddNode<model::InputNode<double>>(dimension);
-
-        // one "leg"
-        auto mean1 = model.AddNode<nodes::MovingAverageNode<double>>(inputNode->output, 8);
-        auto mag1 = model.AddNode<nodes::L2NormNode<double>>(mean1->output);
-
-        // other "leg"
-        auto mag2 = model.AddNode<nodes::L2NormNode<double>>(inputNode->output);
-        auto mean2 = model.AddNode<nodes::MovingAverageNode<double>>(mag2->output, 8);
-
-        // combine them
-        model.AddNode<nodes::BinaryOperationNode<double>>(mag1->output, mean2->output, emitters::BinaryOperationType::subtract);
-        return model;
-    }
-
-    model::Model GetModel3()
-    {
-        const size_t dimension = 3;
-        model::Model model;
-        auto inputNode = model.AddNode<model::InputNode<double>>(dimension);
-        auto lowpass = model.AddNode<nodes::MovingAverageNode<double>>(inputNode->output, 16);
-        auto highpass = model.AddNode<nodes::BinaryOperationNode<double>>(inputNode->output, lowpass->output, emitters::BinaryOperationType::subtract);
-
-        auto delay1 = model.AddNode<nodes::DelayNode<double>>(highpass->output, 4);
-        auto delay2 = model.AddNode<nodes::DelayNode<double>>(highpass->output, 8);
-
-        auto dot1 = model.AddNode<nodes::DotProductNode<double>>(highpass->output, delay1->output);
-        auto dot2 = model.AddNode<nodes::DotProductNode<double>>(highpass->output, delay2->output);
-
-        model.AddNode<nodes::BinaryOperationNode<double>>(dot1->output, dot2->output, emitters::BinaryOperationType::subtract);
-        return model;
-    }
-
-    predictors::SimpleForestPredictor CreateForest(size_t numSplits)
-    {
-        // define some abbreviations
-        using SplitAction = predictors::SimpleForestPredictor::SplitAction;
-        using SplitRule = predictors::SingleElementThresholdPredictor;
-        using EdgePredictorVector = std::vector<predictors::ConstantPredictor>;
-
-        // build a forest
-        predictors::SimpleForestPredictor forest;
-        SplitRule dummyRule{ 0, 0.0 };
-        EdgePredictorVector dummyEdgePredictor{ -1.0, 1.0 };
-        auto root = forest.Split(SplitAction{ forest.GetNewRootId(), dummyRule, dummyEdgePredictor });
-        std::vector<size_t> interiorNodeVector;
-        interiorNodeVector.push_back(root);
-
-        for (size_t index = 0; index < numSplits; ++index)
-        {
-            auto node = interiorNodeVector.back();
-            interiorNodeVector.pop_back();
-            interiorNodeVector.push_back(forest.Split(SplitAction{ forest.GetChildId(node, 0), dummyRule, dummyEdgePredictor }));
-            interiorNodeVector.push_back(forest.Split(SplitAction{ forest.GetChildId(node, 1), dummyRule, dummyEdgePredictor }));
-        }
-        return forest;
-    }
-
-    model::Model GetTreeModel(size_t numSplits)
-    {
-        auto forest = CreateForest(numSplits);
-        model::Model model;
-        auto inputNode = model.AddNode<model::InputNode<double>>(3);
-        model.AddNode<nodes::SimpleForestPredictorNode>(inputNode->output, forest);
-        return model;
-    }
-
-    model::Model GetRefinedTreeModel(size_t numSplits)
-    {
-        auto model = GetTreeModel(numSplits);
-        model::TransformContext context;
-        model::ModelTransformer transformer;
-        auto refinedModel = transformer.RefineModel(model, context);
-        return refinedModel;
-    }
-
-    // Placeholder callback
-    template <typename ValueType>
-    bool SourceNode_EmptyCallback(std::vector<ValueType>&)
-    {
-        return false;
-    }
-
     void RegisterNodeTypes(utilities::SerializationContext& context)
     {
         context.GetTypeFactory().AddType<model::Node, model::InputNode<bool>>();
@@ -197,11 +99,35 @@ namespace common
         context.GetTypeFactory().AddType<model::Node, nodes::BinaryPredicateNode<int>>();
         context.GetTypeFactory().AddType<model::Node, nodes::BinaryPredicateNode<double>>();
 
+        context.GetTypeFactory().AddType<model::Node, nodes::BroadcastLinearFunctionNode<int>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::BroadcastLinearFunctionNode<float>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::BroadcastLinearFunctionNode<double>>();
+
+        context.GetTypeFactory().AddType<model::Node, nodes::BroadcastUnaryFunctionNode<float, nodes::HardSigmoidActivationFunction<float>>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::BroadcastUnaryFunctionNode<double, nodes::HardSigmoidActivationFunction<double>>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::BroadcastUnaryFunctionNode<float, nodes::LeakyReLUActivationFunction<float>>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::BroadcastUnaryFunctionNode<double, nodes::LeakyReLUActivationFunction<double>>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::BroadcastUnaryFunctionNode<float, nodes::ReLUActivationFunction<float>>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::BroadcastUnaryFunctionNode<double, nodes::ReLUActivationFunction<double>>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::BroadcastUnaryFunctionNode<float, nodes::SigmoidActivationFunction<float>>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::BroadcastUnaryFunctionNode<double, nodes::SigmoidActivationFunction<double>>>();
+
+        context.GetTypeFactory().AddType<model::Node, nodes::BufferNode<bool>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::BufferNode<int>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::BufferNode<int64_t>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::BufferNode<float>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::BufferNode<double>>();
+
+        context.GetTypeFactory().AddType<model::Node, nodes::ClockNode>();
+
         context.GetTypeFactory().AddType<model::Node, nodes::ConstantNode<bool>>();
         context.GetTypeFactory().AddType<model::Node, nodes::ConstantNode<int>>();
         context.GetTypeFactory().AddType<model::Node, nodes::ConstantNode<int64_t>>();
         context.GetTypeFactory().AddType<model::Node, nodes::ConstantNode<float>>();
         context.GetTypeFactory().AddType<model::Node, nodes::ConstantNode<double>>();
+
+        context.GetTypeFactory().AddType<model::Node, nodes::DCTNode<float>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::DCTNode<double>>();
 
         context.GetTypeFactory().AddType<model::Node, nodes::DelayNode<bool>>();
         context.GetTypeFactory().AddType<model::Node, nodes::DelayNode<int>>();
@@ -214,10 +140,34 @@ namespace common
         context.GetTypeFactory().AddType<model::Node, nodes::DotProductNode<float>>();
         context.GetTypeFactory().AddType<model::Node, nodes::DotProductNode<double>>();
 
-        context.GetTypeFactory().AddType<model::Node, nodes::L2NormNode<double>>();
-        context.GetTypeFactory().AddType<model::Node, nodes::L2NormNode<float>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::FFTNode<float>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::FFTNode<double>>();
 
-        context.GetTypeFactory().AddType<model::Node, nodes::LinearPredictorNode>();
+        context.GetTypeFactory().AddType<model::Node, nodes::HammingWindowNode<float>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::HammingWindowNode<double>>();
+
+        context.GetTypeFactory().AddType<model::Node, nodes::L2NormSquaredNode<double>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::L2NormSquaredNode<float>>();
+
+        context.GetTypeFactory().AddType<model::Node, nodes::IIRFilterNode<float>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::IIRFilterNode<double>>();
+
+        context.GetTypeFactory().AddType<model::Node, nodes::LinearPredictorNode<float>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::LinearPredictorNode<double>>();
+
+        context.GetTypeFactory().AddType<model::Node, nodes::LinearFilterBankNode<float>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::LinearFilterBankNode<double>>();
+
+        context.GetTypeFactory().AddType<model::Node, nodes::MelFilterBankNode<float>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::MelFilterBankNode<double>>();
+
+        context.GetTypeFactory().AddType<model::Node, nodes::MatrixVectorProductNode<float, math::MatrixLayout::rowMajor>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::MatrixVectorProductNode<float, math::MatrixLayout::columnMajor>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::MatrixVectorProductNode<double, math::MatrixLayout::rowMajor>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::MatrixVectorProductNode<double, math::MatrixLayout::columnMajor>>();
+
+        context.GetTypeFactory().AddType<model::Node, nodes::MatrixMatrixMultiplyNode<float>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::MatrixMatrixMultiplyNode<double>>();
 
         context.GetTypeFactory().AddType<model::Node, nodes::MultiplexerNode<bool, bool>>();
         context.GetTypeFactory().AddType<model::Node, nodes::MultiplexerNode<int, bool>>();
@@ -236,6 +186,9 @@ namespace common
 
         context.GetTypeFactory().AddType<model::Node, nodes::ProtoNNPredictorNode>();
 
+        context.GetTypeFactory().AddType<model::Node, nodes::ReceptiveFieldMatrixNode<float>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::ReceptiveFieldMatrixNode<double>>();
+
         context.GetTypeFactory().AddType<model::Node, nodes::ReorderDataNode<float>>();
         context.GetTypeFactory().AddType<model::Node, nodes::ReorderDataNode<double>>();
 
@@ -246,8 +199,8 @@ namespace common
         context.GetTypeFactory().AddType<model::Node, nodes::SinkNode<float>>();
         context.GetTypeFactory().AddType<model::Node, nodes::SinkNode<double>>();
 
-        context.GetTypeFactory().AddType<model::Node, nodes::SourceNode<float, &SourceNode_EmptyCallback<float>>>();
-        context.GetTypeFactory().AddType<model::Node, nodes::SourceNode<double, &SourceNode_EmptyCallback<double>>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::SourceNode<float>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::SourceNode<double>>();
 
         context.GetTypeFactory().AddType<model::Node, nodes::SumNode<int>>();
         context.GetTypeFactory().AddType<model::Node, nodes::SumNode<int64_t>>();
@@ -286,17 +239,20 @@ namespace common
 
         context.GetTypeFactory().AddType<model::Node, nodes::UnaryOperationNode<float>>();
         context.GetTypeFactory().AddType<model::Node, nodes::UnaryOperationNode<double>>();
-        context.GetTypeFactory().AddType<model::Node, nodes::ProtoNNPredictorNode>();
-        context.GetTypeFactory().AddType<model::Node, nodes::NeuralNetworkPredictorNode<double>>();
-        context.GetTypeFactory().AddType<model::Node, nodes::NeuralNetworkPredictorNode<float>>();
 
         // NN layer nodes
-        context.GetTypeFactory().AddType<model::Node, nodes::ActivationLayerNode<float, ell::predictors::neural::ReLUActivation>>();
-        context.GetTypeFactory().AddType<model::Node, nodes::ActivationLayerNode<double, ell::predictors::neural::ReLUActivation>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::ActivationLayerNode<float, ell::predictors::neural::HardSigmoidActivation>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::ActivationLayerNode<double, ell::predictors::neural::HardSigmoidActivation>>();
         context.GetTypeFactory().AddType<model::Node, nodes::ActivationLayerNode<float, ell::predictors::neural::LeakyReLUActivation>>();
         context.GetTypeFactory().AddType<model::Node, nodes::ActivationLayerNode<double, ell::predictors::neural::LeakyReLUActivation>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::ActivationLayerNode<float, ell::predictors::neural::ReLUActivation>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::ActivationLayerNode<double, ell::predictors::neural::ReLUActivation>>();
         context.GetTypeFactory().AddType<model::Node, nodes::ActivationLayerNode<float, ell::predictors::neural::SigmoidActivation>>();
         context.GetTypeFactory().AddType<model::Node, nodes::ActivationLayerNode<double, ell::predictors::neural::SigmoidActivation>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::ActivationLayerNode<float, ell::predictors::neural::TanhActivation>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::ActivationLayerNode<double, ell::predictors::neural::TanhActivation>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::ParametricReLUActivationLayerNode<float>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::ParametricReLUActivationLayerNode<double>>();
         context.GetTypeFactory().AddType<model::Node, nodes::BatchNormalizationLayerNode<float>>();
         context.GetTypeFactory().AddType<model::Node, nodes::BatchNormalizationLayerNode<double>>();
         context.GetTypeFactory().AddType<model::Node, nodes::BiasLayerNode<float>>();
@@ -311,6 +267,8 @@ namespace common
         context.GetTypeFactory().AddType<model::Node, nodes::PoolingLayerNode<double, ell::predictors::neural::MeanPoolingFunction>>();
         context.GetTypeFactory().AddType<model::Node, nodes::PoolingLayerNode<float, ell::predictors::neural::MaxPoolingFunction>>();
         context.GetTypeFactory().AddType<model::Node, nodes::PoolingLayerNode<double, ell::predictors::neural::MaxPoolingFunction>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::RegionDetectionLayerNode<float>>();
+        context.GetTypeFactory().AddType<model::Node, nodes::RegionDetectionLayerNode<double>>();
         context.GetTypeFactory().AddType<model::Node, nodes::ScalingLayerNode<float>>();
         context.GetTypeFactory().AddType<model::Node, nodes::ScalingLayerNode<double>>();
         context.GetTypeFactory().AddType<model::Node, nodes::SoftmaxLayerNode<float>>();
@@ -319,27 +277,18 @@ namespace common
 
     void RegisterMapTypes(utilities::SerializationContext& context)
     {
-        context.GetTypeFactory().AddType<model::DynamicMap, model::DynamicMap>();
-        context.GetTypeFactory().AddType<model::DynamicMap, model::SteppableMap<std::chrono::steady_clock>>();
-        context.GetTypeFactory().AddType<model::DynamicMap, model::SteppableMap<std::chrono::system_clock>>();
+        context.GetTypeFactory().AddType<model::Map, model::Map>();
     }
 
     template <typename UnarchiverType>
     model::Model LoadArchivedModel(std::istream& stream)
     {
-        try
-        {
-            utilities::SerializationContext context;
-            RegisterNodeTypes(context);
-            UnarchiverType unarchiver(stream, context);
-            model::Model model;
-            unarchiver.Unarchive(model);
-            return model;
-        }
-        catch (const std::exception&)
-        {
-            throw utilities::InputException(utilities::InputExceptionErrors::invalidArgument, "Error: couldn't read file.");
-        }
+        utilities::SerializationContext context;
+        RegisterNodeTypes(context);
+        UnarchiverType unarchiver(stream, context);
+        model::Model model;
+        unarchiver.Unarchive(model);
+        return model;
     }
 
     template <typename ArchiverType, typename ObjectType>
@@ -351,40 +300,13 @@ namespace common
 
     model::Model LoadModel(const std::string& filename)
     {
-        const std::string treePrefix = "[tree_";
-        if (filename == "")
+        if (!utilities::IsFileReadable(filename))
         {
-            return model::Model{};
+            throw utilities::SystemException(utilities::SystemExceptionErrors::fileNotFound);
         }
-        if (filename == "[1]")
-        {
-            return GetModel1();
-        }
-        if (filename == "[2]")
-        {
-            return GetModel2();
-        }
-        else if (filename == "[3]")
-        {
-            return GetModel3();
-        }
-        else if (filename.find(treePrefix) == 0)
-        {
-            auto pos = filename.find(treePrefix);
-            auto suffix = filename.substr(pos + treePrefix.size());
-            auto numSplits = std::stoi(suffix);
-            return GetRefinedTreeModel(numSplits);
-        }
-        else
-        {
-            if (!utilities::IsFileReadable(filename))
-            {
-                throw utilities::SystemException(utilities::SystemExceptionErrors::fileNotFound);
-            }
 
-            auto filestream = utilities::OpenIfstream(filename);
-            return LoadArchivedModel<utilities::JsonUnarchiver>(filestream);
-        }
+        auto filestream = utilities::OpenIfstream(filename);
+        return LoadArchivedModel<utilities::JsonUnarchiver>(filestream);
     }
 
     void SaveModel(const model::Model& model, const std::string& filename)
@@ -405,12 +327,11 @@ namespace common
     //
     // Map
     //
-    template <>
-    model::DynamicMap LoadMap<model::DynamicMap, MapLoadArguments::MapType::simpleMap>(const MapLoadArguments& mapLoadArguments)
+    model::Map LoadMap(const MapLoadArguments& mapLoadArguments)
     {
         if (mapLoadArguments.HasMapFilename())
         {
-            return common::LoadMap<model::DynamicMap>(mapLoadArguments.inputMapFilename);
+            return common::LoadMap(mapLoadArguments.inputMapFilename);
         }
         else if (mapLoadArguments.HasModelFilename())
         {
@@ -470,7 +391,23 @@ namespace common
         }
     }
 
-    void SaveMap(const model::DynamicMap& map, const std::string& filename)
+    model::Map LoadMap(const std::string& filename)
+    {
+        if (filename == "")
+        {
+            return model::Map{};
+        }
+
+        if (!utilities::IsFileReadable(filename))
+        {
+            throw utilities::SystemException(utilities::SystemExceptionErrors::fileNotFound);
+        }
+
+        auto filestream = utilities::OpenIfstream(filename);
+        return LoadArchivedMap<utilities::JsonUnarchiver>(filestream);
+    }
+
+    void SaveMap(const model::Map& map, const std::string& filename)
     {
         if (!utilities::IsFileWritable(filename))
         {
@@ -480,7 +417,7 @@ namespace common
         SaveMap(map, filestream);
     }
 
-    void SaveMap(const model::DynamicMap& map, std::ostream& outStream)
+    void SaveMap(const model::Map& map, std::ostream& outStream)
     {
         SaveArchivedObject<utilities::JsonArchiver>(map, outStream);
     }

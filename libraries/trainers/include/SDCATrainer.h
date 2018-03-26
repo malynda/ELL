@@ -50,7 +50,7 @@ namespace trainers
     /// <typeparam name="LossFunctionType"> Loss function type. </typeparam>
     /// <typeparam name="RegularizerType"> Regularizer type. </typeparam>
     template<typename LossFunctionType, typename RegularizerType>
-    class SDCATrainer : public ITrainer<predictors::LinearPredictor>
+    class SDCATrainer : public ITrainer<predictors::LinearPredictor<double>>
     {
     public:
         /// <summary> Constructs an instance of SDCATrainer. </summary>
@@ -63,20 +63,20 @@ namespace trainers
         /// <summary> Sets the trainer's dataset. </summary>
         ///
         /// <param name="anyDataset"> A dataset. </param>
-        virtual void SetDataset(const data::AnyDataset& anyDataset) override;
+        void SetDataset(const data::AnyDataset& anyDataset) override;
 
         /// <summary> Updates the state of the trainer by performing a learning epoch. </summary>
-        virtual void Update() override;
+        void Update() override;
 
         /// <summary> Gets the trained predictor. </summary>
         ///
         /// <returns> A const reference to the predictor. </returns>
-        virtual const predictors::LinearPredictor& GetPredictor() const override { return _predictor; }
+        const predictors::LinearPredictor<double>& GetPredictor() const override { return _predictor; }
 
         /// <summary> Gets information on the trained predictor. </summary>
         ///
         /// <returns> Information on the trained predictor. </returns>
-        double GetPredictorInfo() const { return _predictorInfo; }
+        SDCAPredictorInfo GetPredictorInfo() const { return _predictorInfo; }
 
     private:
         struct TrainerMetadata
@@ -93,7 +93,7 @@ namespace trainers
             double dualVariable = 0;
         };
 
-        using DataVectorType = typename predictors::LinearPredictor::DataVectorType;
+        using DataVectorType = typename predictors::LinearPredictor<double>::DataVectorType;
         using TrainerExampleType = data::Example<DataVectorType, TrainerMetadata>;
 
         void Step(TrainerExampleType& x);
@@ -108,7 +108,7 @@ namespace trainers
 
         data::Dataset<TrainerExampleType> _dataset;
 
-        predictors::LinearPredictor _predictor;
+        predictors::LinearPredictor<double> _predictor;
         SDCAPredictorInfo _predictorInfo;
 
         math::ColumnVector<double> _v;
@@ -128,7 +128,7 @@ namespace trainers
     ///
     /// <returns> A linear trainer </returns>
     template <typename LossFunctionType, typename RegularizerType>
-    std::unique_ptr<trainers::ITrainer<predictors::LinearPredictor>> MakeSDCATrainer(const LossFunctionType& lossFunction, const RegularizerType& regularizer, const SDCATrainerParameters& parameters);
+    std::unique_ptr<trainers::ITrainer<predictors::LinearPredictor<double>>> MakeSDCATrainer(const LossFunctionType& lossFunction, const RegularizerType& regularizer, const SDCATrainerParameters& parameters);
 }
 }
 

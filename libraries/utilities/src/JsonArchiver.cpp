@@ -9,6 +9,7 @@
 #include "JsonArchiver.h"
 #include "Archiver.h"
 #include "IArchivable.h"
+#include "Unused.h"
 
 #include <cassert>
 #include <cctype>
@@ -33,17 +34,9 @@ namespace utilities
     {
     }
 
-    IMPLEMENT_ARCHIVE_VALUE(JsonArchiver, bool);
-    IMPLEMENT_ARCHIVE_VALUE(JsonArchiver, char);
-    IMPLEMENT_ARCHIVE_VALUE(JsonArchiver, short);
-    IMPLEMENT_ARCHIVE_VALUE(JsonArchiver, int);
-    IMPLEMENT_ARCHIVE_VALUE(JsonArchiver, size_t);
-    IMPLEMENT_ARCHIVE_VALUE(JsonArchiver, int64_t);
-#ifdef __APPLE__
-    IMPLEMENT_ARCHIVE_VALUE(JsonArchiver, uint64_t);
-#endif
-    IMPLEMENT_ARCHIVE_VALUE(JsonArchiver, float);
-    IMPLEMENT_ARCHIVE_VALUE(JsonArchiver, double);
+    #define ARCHIVE_TYPE_OP(t) IMPLEMENT_ARCHIVE_VALUE(JsonArchiver, t);
+    ARCHIVABLE_TYPES_LIST
+    #undef ARCHIVE_TYPE_OP
 
     // strings
     void JsonArchiver::ArchiveValue(const char* name, const std::string& value)
@@ -98,17 +91,9 @@ namespace utilities
     //
     // Arrays
     //
-    IMPLEMENT_ARCHIVE_ARRAY(JsonArchiver, bool);
-    IMPLEMENT_ARCHIVE_ARRAY(JsonArchiver, char);
-    IMPLEMENT_ARCHIVE_ARRAY(JsonArchiver, short);
-    IMPLEMENT_ARCHIVE_ARRAY(JsonArchiver, int);
-    IMPLEMENT_ARCHIVE_ARRAY(JsonArchiver, size_t);
-    IMPLEMENT_ARCHIVE_ARRAY(JsonArchiver, int64_t);
-#ifdef __APPLE__
-    IMPLEMENT_ARCHIVE_ARRAY(JsonArchiver, uint64_t);
-#endif
-    IMPLEMENT_ARCHIVE_ARRAY(JsonArchiver, float);
-    IMPLEMENT_ARCHIVE_ARRAY(JsonArchiver, double);
+    #define ARCHIVE_TYPE_OP(t) IMPLEMENT_ARCHIVE_ARRAY(JsonArchiver, t);
+    ARCHIVABLE_TYPES_LIST
+    #undef ARCHIVE_TYPE_OP
 
     void JsonArchiver::ArchiveArray(const char* name, const std::vector<std::string>& array)
     {
@@ -117,6 +102,7 @@ namespace utilities
 
     void JsonArchiver::ArchiveArray(const char* name, const std::string& baseTypeName, const std::vector<const IArchivable*>& array)
     {
+        UNUSED(baseTypeName);
         FinishPreviousLine();
         auto indent = GetCurrentIndent();
         bool hasName = name != std::string("");
@@ -184,17 +170,9 @@ namespace utilities
     {
     }
 
-    IMPLEMENT_UNARCHIVE_VALUE(JsonUnarchiver, bool);
-    IMPLEMENT_UNARCHIVE_VALUE(JsonUnarchiver, char);
-    IMPLEMENT_UNARCHIVE_VALUE(JsonUnarchiver, short);
-    IMPLEMENT_UNARCHIVE_VALUE(JsonUnarchiver, int);
-    IMPLEMENT_UNARCHIVE_VALUE(JsonUnarchiver, size_t);
-    IMPLEMENT_UNARCHIVE_VALUE(JsonUnarchiver, int64_t);
-#ifdef __APPLE__
-    IMPLEMENT_UNARCHIVE_VALUE(JsonUnarchiver, uint64_t);
-#endif
-    IMPLEMENT_UNARCHIVE_VALUE(JsonUnarchiver, float);
-    IMPLEMENT_UNARCHIVE_VALUE(JsonUnarchiver, double);
+    #define ARCHIVE_TYPE_OP(t) IMPLEMENT_UNARCHIVE_VALUE(JsonUnarchiver, t);
+    ARCHIVABLE_TYPES_LIST
+    #undef ARCHIVE_TYPE_OP
 
     // strings
     void JsonUnarchiver::UnarchiveValue(const char* name, std::string& value)
@@ -205,6 +183,7 @@ namespace utilities
     // IArchivable
     ArchivedObjectInfo JsonUnarchiver::BeginUnarchiveObject(const char* name, const std::string& typeName)
     {
+        UNUSED(typeName);
         bool hasName = name != std::string("");
         if (hasName)
         {
@@ -258,8 +237,47 @@ namespace utilities
         }
     }
 
+    bool JsonUnarchiver::HasNextPropertyName(const std::string& name)
+    {
+        bool ok = true;
+        std::string nextPropertyName = "";
+        std::vector<std::string> readTokens;
+        if (_tokenizer.TryMatchToken("\""))
+        {
+            readTokens.push_back("\"");
+            nextPropertyName = _tokenizer.ReadNextToken();
+            readTokens.push_back(nextPropertyName);
+            if (_tokenizer.TryMatchToken("\""))
+            {
+                readTokens.push_back("\"");
+                if (_tokenizer.TryMatchToken(":"))
+                {
+                    readTokens.push_back(":");
+                }
+                else
+                {
+                    ok = false;
+                }
+            }
+            else
+            {
+                ok = false;
+            }
+        }
+
+        // put back all read tokens
+        while (!readTokens.empty())
+        {
+            _tokenizer.PutBackToken(readTokens.back());
+            readTokens.pop_back();
+        }
+
+        return ok && nextPropertyName == name;
+    }
+
     void JsonUnarchiver::EndUnarchiveObject(const char* name, const std::string& typeName)
     {
+        UNUSED(typeName);
         bool hasName = name != std::string("");
         _tokenizer.MatchToken("}");
 
@@ -276,17 +294,9 @@ namespace utilities
     //
     // Arrays
     //
-    IMPLEMENT_UNARCHIVE_ARRAY(JsonUnarchiver, bool);
-    IMPLEMENT_UNARCHIVE_ARRAY(JsonUnarchiver, char);
-    IMPLEMENT_UNARCHIVE_ARRAY(JsonUnarchiver, short);
-    IMPLEMENT_UNARCHIVE_ARRAY(JsonUnarchiver, int);
-    IMPLEMENT_UNARCHIVE_ARRAY(JsonUnarchiver, size_t);
-    IMPLEMENT_UNARCHIVE_ARRAY(JsonUnarchiver, int64_t);
-#ifdef __APPLE__
-    IMPLEMENT_UNARCHIVE_ARRAY(JsonUnarchiver, uint64_t);
-#endif
-    IMPLEMENT_UNARCHIVE_ARRAY(JsonUnarchiver, float);
-    IMPLEMENT_UNARCHIVE_ARRAY(JsonUnarchiver, double);
+    #define ARCHIVE_TYPE_OP(t) IMPLEMENT_UNARCHIVE_ARRAY(JsonUnarchiver, t);
+    ARCHIVABLE_TYPES_LIST
+    #undef ARCHIVE_TYPE_OP
 
     void JsonUnarchiver::UnarchiveArray(const char* name, std::vector<std::string>& array)
     {
@@ -295,6 +305,7 @@ namespace utilities
 
     void JsonUnarchiver::BeginUnarchiveArray(const char* name, const std::string& typeName)
     {
+        UNUSED(typeName);
         bool hasName = name != std::string("");
         if (hasName)
         {
@@ -306,6 +317,7 @@ namespace utilities
 
     bool JsonUnarchiver::BeginUnarchiveArrayItem(const std::string& typeName)
     {
+        UNUSED(typeName);
         auto maybeEndArray = _tokenizer.PeekNextToken();
         if (maybeEndArray == "]")
         {
@@ -319,6 +331,7 @@ namespace utilities
 
     void JsonUnarchiver::EndUnarchiveArrayItem(const std::string& typeName)
     {
+        UNUSED(typeName);
         if (_tokenizer.PeekNextToken() == ",")
         {
             _tokenizer.ReadNextToken();
@@ -327,6 +340,7 @@ namespace utilities
 
     void JsonUnarchiver::EndUnarchiveArray(const char* name, const std::string& typeName)
     {
+        UNUSED(typeName);
         bool hasName = name != std::string("");
         _tokenizer.MatchToken("]");
         // eat a comma if it exists
@@ -339,7 +353,7 @@ namespace utilities
         }
     }
 
-    bool JsonUnarchiver::TryMatchFieldName(const char* key)
+    bool JsonUnarchiver::TryMatchFieldName(const char* key, std::string& found)
     {
         bool ok = _tokenizer.TryMatchToken("\"");
         if (!ok)
@@ -350,6 +364,7 @@ namespace utilities
         auto s = _tokenizer.PeekNextToken();
         if (s != key)
         {
+            found = s;
             return false;
         }
         _tokenizer.ReadNextToken();
@@ -360,9 +375,10 @@ namespace utilities
 
     void JsonUnarchiver::MatchFieldName(const char* key)
     {
-        if (!TryMatchFieldName(key))
+        std::string found = "non literal";
+        if (!TryMatchFieldName(key, found))
         {
-            throw InputException(InputExceptionErrors::badStringFormat, std::string{ "Failed to match field " } + key);
+            throw InputException(InputExceptionErrors::badStringFormat, std::string{ "Failed to match field " } + key + ", instead found token '" + found + "'");
         }
     }
 

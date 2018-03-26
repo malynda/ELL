@@ -9,6 +9,7 @@
 #pragma once
 
 #include "Exception.h"
+#include "Unused.h"
 #include "Variant.h"
 
 // stl
@@ -127,6 +128,21 @@ namespace utilities
         // friends
         friend class IArchivable;
     };
+
+    /// <summary> Create an `ObjectArchive` from an object </summary>
+    ///
+    /// <param name="object"> The object </param>
+    ///
+    /// <returns> The `ObjectArchive` describing the object </returns>
+    ObjectArchive GetDescription(const IArchivable& object);
+
+    /// <summary> Creates an object from an `ObjectArchive` </summary>
+    ///
+    /// <typeparam name="ValueType"> The type of the object to retrieve </typeparam>
+    /// <param name="archive"> The `ObjectArchive` to get the object from </param>
+    /// <returns> The new object </returns>
+    template <typename ValueType>
+    ValueType CreateObject(const ObjectArchive& archive);
 }
 }
 

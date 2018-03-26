@@ -2,14 +2,18 @@
 # cmake file
 #
 
-find_package(PythonInterp)
-find_package(PythonLibs)
-if(${PYTHONLIBS_FOUND})
-    find_package(PythonInterp)
+if(${PYTHON_ENABLED})
 
     set(module_name "cntk_importer")
 
-    set(importer_src cntk_to_ell.py custom_functions.py)
+    set(importer_src cntk_to_ell.py
+        cntk_import.py
+        lib/cntk_converters.py
+        lib/cntk_layers.py
+        lib/cntk_utilities.py
+        lib/shared_converters.py
+        lib/shared_importer.py
+        custom_functions.py)
 
     add_custom_target(${module_name} DEPENDS SOURCES ${importer_src})
 
@@ -21,4 +25,4 @@ if(${PYTHONLIBS_FOUND})
     endforeach()
 
     add_subdirectory(test)
-endif()  # PYTHONLIBS_FOUND
+endif()  # PYTHON_ENABLED

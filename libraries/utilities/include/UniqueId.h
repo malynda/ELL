@@ -10,13 +10,13 @@
 
 #include "IArchivable.h"
 
+// stl
 #include <functional>
 #include <ostream>
 #include <string>
 
 namespace ell
 {
-/// <summary> model namespace </summary>
 namespace utilities
 {
     /// <summary> UniqueId: A placeholder for a real GUID-type class </summary>
@@ -55,7 +55,7 @@ namespace utilities
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+        std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
         /// <summary> Stream output </summary>
         friend std::ostream& operator<<(std::ostream& stream, const UniqueId& id);
@@ -64,8 +64,8 @@ namespace utilities
         friend std::string to_string(const UniqueId& id);
 
     protected:
-        virtual void WriteToArchive(Archiver& archiver) const override;
-        virtual void ReadFromArchive(Unarchiver& archiver) override;
+        void WriteToArchive(Archiver& archiver) const override;
+        void ReadFromArchive(Unarchiver& archiver) override;
 
     private:
         friend std::hash<UniqueId>;
@@ -82,11 +82,10 @@ namespace std
 {
 /// <summary> Implements a hash function for the UniqueId class, so that it can be used with associative containers (maps, sets, and the like). </summary>
 template <>
-class hash<ell::utilities::UniqueId>
+struct hash<ell::utilities::UniqueId>
 {
-public:
-    typedef ell::utilities::UniqueId argument_type;
-    typedef std::size_t result_type;
+    using argument_type = ell::utilities::UniqueId;
+    using result_type = std::size_t;
 
     /// <summary> Computes a hash of the input value. </summary>
     ///

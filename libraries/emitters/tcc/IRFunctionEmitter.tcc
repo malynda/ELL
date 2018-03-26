@@ -6,26 +6,35 @@
 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+// Needed in the tcc because IRLocalValueHelpers.h needs IRFunctionEmitter to be defined
+#include "IRLocalValueOperations.h"
+
 namespace ell
 {
 namespace emitters
 {
+    template <typename ValueType, utilities::IsFundamental<ValueType>>
+    IRLocalScalar IRFunctionEmitter::LocalScalar(ValueType value)
+    {
+        return IRLocalScalar(*this, Literal(value));
+    }
+
     template <typename ValueType>
     llvm::Value* IRFunctionEmitter::Literal(ValueType value)
     {
         return _pEmitter->Literal(value);
     }
 
+    template <typename ValueType>
+    llvm::Value* IRFunctionEmitter::Pointer(ValueType* value)
+    {
+        return _pEmitter->Pointer(value);
+    }
+
     template <typename InputType, typename OutputType>
     llvm::Value* IRFunctionEmitter::CastValue(llvm::Value* pValue)
     {
         return _pEmitter->CastValue<InputType, OutputType>(pValue);
-    }
-
-    template <typename ValueType>
-    llvm::Value* IRFunctionEmitter::Cast(llvm::Value* pValue)
-    {
-        return Cast(pValue, GetVariableType<ValueType>());
     }
 
     template <typename ValueType>
@@ -123,6 +132,22 @@ namespace emitters
     }
 
     template <typename ValueType>
+    void IRFunctionEmitter::MemorySet(llvm::Value* pDestinationPointer, llvm::Value* pDestinationOffset, llvm::Value* value, int count)
+    {
+        auto pDestination = PointerOffset(pDestinationPointer, pDestinationOffset);
+        int byteCount = count * sizeof(ValueType);
+        _pEmitter->MemorySet(pDestination, value, Literal(byteCount));
+    }
+
+    template <typename ValueType>
+    void IRFunctionEmitter::MemorySet(llvm::Value* pDestinationPointer, llvm::Value* pDestinationOffset, llvm::Value* value, llvm::Value* count)
+    {
+        auto pDestination = PointerOffset(pDestinationPointer, pDestinationOffset);
+        auto byteCount = Operator(emitters::TypedOperator::multiply, count, Literal<int>(sizeof(ValueType)));
+        _pEmitter->MemorySet(pDestination, value, byteCount);
+    }
+
+    template <typename ValueType>
     void IRFunctionEmitter::ShiftAndUpdate(llvm::Value* buffer, int bufferSize, int shiftCount, llvm::Value* pNewData, llvm::Value* pShiftedData)
     {
         assert(buffer != nullptr);
@@ -137,6 +162,18 @@ namespace emitters
             MemoryMove<ValueType>(buffer, shiftCount, 0, (bufferSize - shiftCount));
         }
         MemoryCopy<ValueType>(pNewData, 0, buffer, (bufferSize - shiftCount), shiftCount);
+    }
+
+    template <typename ArgsListType>
+    void IRFunctionEmitter::RegisterFunctionArgs(const ArgsListType& args)
+    {
+        auto argumentsIterator = Arguments().begin();
+        for (size_t i = 0; i < args.size(); ++i)
+        {
+            auto arg = &(*argumentsIterator);
+            _locals.Add(args[i].first, arg);
+            ++argumentsIterator;
+        }
     }
 }
 }

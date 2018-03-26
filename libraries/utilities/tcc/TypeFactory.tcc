@@ -6,8 +6,8 @@
 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include <cassert>
-#include <iostream>
+// utilities
+#include "Debug.h"
 
 namespace ell
 {
@@ -38,6 +38,8 @@ namespace utilities
     void TypeFactory<BaseType>::AddType(const std::string& typeName)
     {
         static_assert(std::is_base_of<BaseType, RuntimeType>::value, "incompatible base and runtime types in TypeFactory::Add");
+
+        DEBUG_THROW(_typeMap.find(typeName) != _typeMap.end(), std::logic_error(typeName + " has already been added to the type factory"));
 
         _typeMap[typeName] = []() -> std::unique_ptr<BaseType> { return (std::make_unique<RuntimeType>()); };
     }
@@ -97,7 +99,6 @@ namespace utilities
         if (entry == _typeConstructorMap.end())
         {
             throw utilities::InputException(utilities::InputExceptionErrors::invalidArgument, "type " + typeName + " not registered in TypeFactory<" + BaseType::GetTypeName() + ">");
-            assert(false);
         }
 
         return entry->second->Construct<BaseType>();
@@ -115,6 +116,8 @@ namespace utilities
     {
         auto baseTypeName = std::string{ BaseType::GetTypeName() };
         auto key = baseTypeName + "__" + typeName;
+
+        DEBUG_THROW(_typeConstructorMap.find(key) != _typeConstructorMap.end(), std::logic_error(key + " has already been added to the type factory"));
 
         auto derivedCreator = TypeConstructorDerived<BaseType>::template NewTypeConstructor<RuntimeType>().release();
         _typeConstructorMap[key] = std::shared_ptr<TypeConstructorBase>(derivedCreator);

@@ -10,33 +10,30 @@
 #include "Debug.h"
 #include "Exception.h"
 
-// stl
-#include <algorithm> // for std::generate
-
 namespace ell
 {
 namespace math
 {
     //
-    // UnorientedConstVectorReference
+    // UnorientedConstVectorBase
     //
 
     template <typename ElementType>
-    UnorientedConstVectorReference<ElementType>::UnorientedConstVectorReference(ElementType* pData, size_t size, size_t increment)
+    UnorientedConstVectorBase<ElementType>::UnorientedConstVectorBase(const ElementType* pData, size_t size, size_t increment)
         : _pData(pData), _size(size), _increment(increment)
     {
     }
 
     template <typename ElementType>
-    ElementType UnorientedConstVectorReference<ElementType>::operator[](size_t index) const
+    ElementType UnorientedConstVectorBase<ElementType>::operator[](size_t index) const
     {
         DEBUG_THROW(index >= _size, utilities::InputException(utilities::InputExceptionErrors::indexOutOfRange, "index exceeds vector size."));
 
-        return _pData[index * _increment];
+        return GetConstDataPointer()[index * _increment];
     }
 
     template <typename ElementType>
-    void UnorientedConstVectorReference<ElementType>::Swap(UnorientedConstVectorReference<ElementType>& other)
+    void UnorientedConstVectorBase<ElementType>::Swap(UnorientedConstVectorBase<ElementType>& other)
     {
         std::swap(_pData, other._pData);
         std::swap(_size, other._size);
@@ -44,36 +41,36 @@ namespace math
     }
 
     template <typename ElementType>
-    ElementType UnorientedConstVectorReference<ElementType>::Norm0() const
+    ElementType UnorientedConstVectorBase<ElementType>::Norm0() const
     {
         return Aggregate([](ElementType x) { return x != 0 ? 1 : 0; });
     }
 
     template <typename ElementType>
-    ElementType UnorientedConstVectorReference<ElementType>::Norm1() const
+    ElementType UnorientedConstVectorBase<ElementType>::Norm1() const
     {
         return Aggregate([](ElementType x) { return std::abs(x); });
     }
 
     template <typename ElementType>
-    ElementType UnorientedConstVectorReference<ElementType>::Norm2() const
+    ElementType UnorientedConstVectorBase<ElementType>::Norm2() const
     {
         return std::sqrt(Norm2Squared());
     }
 
     template <typename ElementType>
-    ElementType UnorientedConstVectorReference<ElementType>::Norm2Squared() const
+    ElementType UnorientedConstVectorBase<ElementType>::Norm2Squared() const
     {
-        return Aggregate([](ElementType x) { return x*x; });
+        return Aggregate([](ElementType x) { return x * x; });
     }
 
     template <typename ElementType>
     template <typename MapperType>
-    ElementType UnorientedConstVectorReference<ElementType>::Aggregate(MapperType mapper) const
+    ElementType UnorientedConstVectorBase<ElementType>::Aggregate(MapperType mapper) const
     {
         ElementType result = 0;
-        const ElementType* current = _pData;
-        const ElementType* end = _pData + _size * _increment;
+        const ElementType* current = GetConstDataPointer();
+        const ElementType* end = current + _size * _increment;
         while (current < end)
         {
             result += mapper(*current);
@@ -83,13 +80,13 @@ namespace math
     }
 
     template <typename ElementType>
-    std::vector<ElementType> UnorientedConstVectorReference<ElementType>::ToArray() const
+    std::vector<ElementType> UnorientedConstVectorBase<ElementType>::ToArray() const
     {
         std::vector<ElementType> result(_size);
 
-        ElementType* data = _pData;
-        for (size_t i = 0; i < _size; ++i, data += _increment)
-            result[i] = *data;
+        const ElementType* pData = GetConstDataPointer();
+        for (size_t i = 0; i < _size; ++i, pData += _increment)
+            result[i] = *pData;
 
         return result;
     }
@@ -101,20 +98,20 @@ namespace math
     template <typename ElementType, VectorOrientation orientation>
     void ConstVectorReference<ElementType, orientation>::Swap(ConstVectorReference<ElementType, orientation>& other)
     {
-        UnorientedConstVectorReference<ElementType>::Swap(other);
+        UnorientedConstVectorBase<ElementType>::Swap(other);
     }
 
     template <typename ElementType, VectorOrientation orientation>
     bool ConstVectorReference<ElementType, orientation>::IsEqual(ConstVectorReference<ElementType, orientation> other, ElementType tolerance) const
     {
-        if (_size != other._size)
+        if (this->Size() != other.Size())
         {
             return false;
         }
 
-        const ElementType* pThis = _pData;
-        const ElementType* pThisEnd = _pData + _size * _increment;
-        const ElementType* pOther = other._pData;
+        const ElementType* pThis = this->GetConstDataPointer();
+        const ElementType* pThisEnd = pThis + this->Size() * this->GetIncrement();
+        const ElementType* pOther = other.GetConstDataPointer();
 
         while (pThis < pThisEnd)
         {
@@ -124,8 +121,8 @@ namespace math
             {
                 return false;
             }
-            pThis += _increment;
-            pOther += other._increment;
+            pThis += this->GetIncrement();
+            pOther += other.GetIncrement();
         }
         return true;
     }
@@ -145,99 +142,21 @@ namespace math
     template <typename ElementType, VectorOrientation orientation>
     ConstVectorReference<ElementType, orientation> ConstVectorReference<ElementType, orientation>::GetSubVector(size_t offset, size_t size) const
     {
-        DEBUG_THROW(offset + size > _size, utilities::InputException(utilities::InputExceptionErrors::indexOutOfRange, "subvector offset + subvector size exceeds vector size."));
+        DEBUG_THROW(offset + size > this->Size(), utilities::InputException(utilities::InputExceptionErrors::indexOutOfRange, "subvector offset + subvector size exceeds vector size."));
 
-        return ConstVectorReference<ElementType, orientation>(_pData + offset * _increment, size, _increment);
-    }
-
-    template <typename ElementType, VectorOrientation orientation>
-    void Print(ConstVectorReference<ElementType, orientation> v, std::ostream& stream, size_t indent, size_t maxElements)
-    {
-        DEBUG_THROW(maxElements < 3, utilities::InputException(utilities::InputExceptionErrors::invalidArgument, "cannot specify maxElements below 3."));
-
-        stream << std::string(indent, ' ');
-        if (v.Size() == 0)
-        {
-            stream << "{ }";
-        }
-        else if (v.Size() <= maxElements)
-        {
-            stream << "{ " << v[0];
-            for (size_t i = 1; i < v.Size(); ++i)
-            {
-                stream << ", " << v[i];
-            }
-            stream << " }";
-        }
-        else 
-        {
-            stream << "{ " << v[0];
-            for (size_t i = 1; i < maxElements-2; ++i)
-            {
-                stream << ", " << v[i];
-            }
-            stream << ", ..., " << v[v.Size() - 1] << " }";
-        }
-    }
-
-    template <typename ElementType, VectorOrientation orientation>
-    std::ostream& operator<<(std::ostream& stream, ConstVectorReference<ElementType, orientation> v)
-    {
-        Print(v, stream);
-        return stream;
-    }
-
-    //
-    // TransformedConstVectorReference
-    // 
-
-    template <typename ElementType, VectorOrientation orientation, typename TransformationType>
-    TransformedConstVectorReference<ElementType, orientation, TransformationType>::TransformedConstVectorReference(ConstVectorReference<ElementType, orientation> vector, TransformationType transformation)
-        : _vector(vector), _transformation(std::move(transformation))
-    {
-    }
-
-    template <typename ElementType, VectorOrientation orientation, typename TransformationType>
-    TransformedConstVectorReference<ElementType, orientation, TransformationType> TransformVector(ConstVectorReference<ElementType, orientation> vector, TransformationType transformation)
-    {
-        return TransformedConstVectorReference<ElementType, orientation, TransformationType>(vector, transformation);
-    }
-
-    template <typename ElementType, VectorOrientation orientation>
-    auto operator*(double scalar, ConstVectorReference<ElementType, orientation> vector)
-    {
-        ElementType typedScalar = static_cast<ElementType>(scalar);
-        return TransformVector(vector, [typedScalar](ElementType x) { return typedScalar * x; });
-    }
-
-    template <typename ElementType, VectorOrientation orientation>
-    auto Square(ConstVectorReference<ElementType, orientation> vector)
-    {
-        return TransformVector(vector, [](ElementType x) { return x * x; });
-    }
-
-    template <typename ElementType, VectorOrientation orientation>
-    auto Sqrt(ConstVectorReference<ElementType, orientation> vector)
-    {
-        return TransformVector(vector, [](ElementType x) { return std::sqrt(x); });
-    }
-
-    template <typename ElementType, VectorOrientation orientation>
-    auto Abs(ConstVectorReference<ElementType, orientation> vector)
-    {
-        return TransformVector(vector, [](ElementType x) { return std::abs(x); });
+        return ConstVectorReference<ElementType, orientation>(this->GetConstDataPointer() + offset * this->GetIncrement(), size, this->GetIncrement());
     }
 
     //
     // VectorReference
-    // 
+    //
 
     template <typename ElementType, VectorOrientation orientation>
     ElementType& VectorReference<ElementType, orientation>::operator[](size_t index)
     {
-        DEBUG_THROW(index >= _size, utilities::InputException(utilities::InputExceptionErrors::indexOutOfRange, "index exceeds vector size."));
+        DEBUG_THROW(index >= this->Size(), utilities::InputException(utilities::InputExceptionErrors::indexOutOfRange, "index exceeds vector size."));
 
-        return _pData[index * _increment];
+        return GetDataPointer()[index * this->GetIncrement()];
     }
 
     template <typename ElementType, VectorOrientation orientation>
@@ -247,41 +166,19 @@ namespace math
     }
 
     template <typename ElementType, VectorOrientation orientation>
-    template <typename TransformationType>
-    void VectorReference<ElementType, orientation>::CopyFrom(TransformedConstVectorReference<ElementType, orientation, TransformationType> other)
-    {
-        const auto& otherVector = other.GetVector();
-        auto transformation = other.GetTransformation();
-
-        DEBUG_THROW(_size != otherVector.Size(), utilities::InputException(utilities::InputExceptionErrors::invalidArgument, "this vector and other vector are not the same size."));
-
-        ElementType* pData = _pData;
-        const ElementType* pEnd = pData + _increment * _size;
-        const ElementType* pOtherData = otherVector.GetDataPointer();
-        const size_t otherIncrement = otherVector.GetIncrement();
-
-        while (pData < pEnd)
-        {
-            (*pData) = transformation(*pOtherData);
-            pData += _increment;
-            pOtherData += otherIncrement;
-        }
-    }
-
-    template <typename ElementType, VectorOrientation orientation>
     void VectorReference<ElementType, orientation>::CopyFrom(ConstVectorReference<ElementType, orientation> other)
     {
-        if (_size != other.Size())
+        if (this->Size() != other.Size())
         {
             throw utilities::InputException(utilities::InputExceptionErrors::invalidArgument, "this vector and other vector are not the same size.");
         }
 
-        ElementType* pData = _pData;
-        const ElementType* pOtherData = other.GetDataPointer();
+        ElementType* pData = GetDataPointer();
+        const ElementType* pOtherData = other.GetConstDataPointer();
         const size_t otherIncrement = other.GetIncrement();
         const ElementType* pOtherEnd = pOtherData + otherIncrement * other.Size();
 
-        if (_increment == 1 && otherIncrement == 1)
+        if (this->GetIncrement() == 1 && otherIncrement == 1)
         {
             while (pOtherData < pOtherEnd)
             {
@@ -295,7 +192,7 @@ namespace math
             while (pOtherData < pOtherEnd)
             {
                 (*pData) = (*pOtherData);
-                pData += _increment;
+                pData += this->GetIncrement();
                 pOtherData += otherIncrement;
             }
         }
@@ -310,10 +207,10 @@ namespace math
     template <typename ElementType, VectorOrientation orientation>
     void VectorReference<ElementType, orientation>::Fill(ElementType value)
     {
-        ElementType* data = _pData;
-        ElementType* end = _pData + _size * _increment;
+        ElementType* data = GetDataPointer();
+        ElementType* end = data + this->Size() * this->GetIncrement();
 
-        if (_increment == 1)
+        if (this->IsContiguous())
         {
             std::fill(data, end, value);
         }
@@ -322,7 +219,7 @@ namespace math
             while (data < end)
             {
                 *data = value;
-                data += _increment;
+                data += this->GetIncrement();
             }
         }
     }
@@ -331,137 +228,41 @@ namespace math
     template <typename GeneratorType>
     void VectorReference<ElementType, orientation>::Generate(GeneratorType generator)
     {
-        ElementType* data = _pData;
-        ElementType* end = _pData + _size * _increment;
+        ElementType* data = GetDataPointer();
+        ElementType* end = data + this->Size() * this->GetIncrement();
 
         while (data < end)
         {
-            *data = generator();
-            data += _increment;
+            *data = static_cast<ElementType>(generator());
+            data += this->GetIncrement();
         }
     }
-
 
     template <typename ElementType, VectorOrientation orientation>
     template <typename TransformationType>
     void VectorReference<ElementType, orientation>::Transform(TransformationType transformation)
     {
-        ElementType* current = _pData;
-        const ElementType* end = _pData + _size * _increment;
-        while (current < end)
+        ElementType* pData = this->GetDataPointer();
+        const ElementType* pEnd = pData + this->Size() * this->GetIncrement();
+        while (pData < pEnd)
         {
-            *current = transformation(*current);
-            current += _increment;
+            *pData = transformation(*pData);
+            pData += this->GetIncrement();
         }
     }
 
     template <typename ElementType, VectorOrientation orientation>
     VectorReference<ElementType, orientation> VectorReference<ElementType, orientation>::GetReference()
     {
-        return VectorReference<ElementType, orientation>(_pData, _size, _increment);
+        return VectorReference<ElementType, orientation>(GetDataPointer(), this->Size(), this->GetIncrement());
     }
 
     template <typename ElementType, VectorOrientation orientation>
     VectorReference<ElementType, orientation> VectorReference<ElementType, orientation>::GetSubVector(size_t offset, size_t size)
     {
-        DEBUG_THROW(offset + size > _size, utilities::InputException(utilities::InputExceptionErrors::indexOutOfRange, "subvector offset + subvector size exceeds vector size."));
+        DEBUG_THROW(offset + size > this->Size(), utilities::InputException(utilities::InputExceptionErrors::indexOutOfRange, "subvector offset + subvector size exceeds vector size."));
 
-        return VectorReference<ElementType, orientation>(_pData + offset * _increment, size, _increment);
-    }
-
-    template <typename ElementType, VectorOrientation orientation>
-    template <typename TransformationType>
-    void VectorReference<ElementType, orientation>::operator+=(TransformedConstVectorReference<ElementType, orientation, TransformationType> other)
-    {
-        const auto& otherVector = other.GetVector();
-        auto transformation = other.GetTransformation();
-
-        if (_size != otherVector.Size())
-        {
-            throw utilities::InputException(utilities::InputExceptionErrors::invalidArgument, "this vector and other vector are not the same size.");
-        }
-
-        ElementType* pData = _pData;
-        const ElementType* pEnd = pData + _increment * _size;
-        const ElementType* pOtherData = otherVector.GetDataPointer();
-        const size_t otherIncrement = otherVector.GetIncrement();
-
-        while (pData < pEnd)
-        {
-            (*pData) += transformation(*pOtherData);
-            pData += _increment;
-            pOtherData += otherIncrement;
-        }
-    }
-
-    template <typename ElementType, VectorOrientation orientation>
-    void VectorReference<ElementType, orientation>::operator+=(ConstVectorReference<ElementType, orientation> other)
-    {
-        if (_size != other.Size())
-        {
-            throw utilities::InputException(utilities::InputExceptionErrors::invalidArgument, "this vector and other vector are not the same size.");
-        }
-
-        ElementType* pData = _pData;
-        const ElementType* pEnd = pData + _increment * _size;
-        const ElementType* pOtherData = other.GetDataPointer();
-        const size_t otherIncrement = other.GetIncrement();
-
-        while (pData < pEnd)
-        {
-            (*pData) += (*pOtherData);
-            pData += _increment;
-            pOtherData += otherIncrement;
-        }
-    }
-
-    template <typename ElementType, VectorOrientation orientation>
-    void VectorReference<ElementType, orientation>::operator-=(ConstVectorReference<ElementType, orientation> other)
-    {
-        if (_size != other.Size())
-        {
-            throw utilities::InputException(utilities::InputExceptionErrors::invalidArgument, "this vector and other vector are not the same size.");
-        }
-
-        ElementType* pData = _pData;
-        const ElementType* pEnd = pData + _increment * _size;
-        const ElementType* pOtherData = other.GetDataPointer();
-        const size_t otherIncrement = other.GetIncrement();
-
-        while (pData < pEnd)
-        {
-            (*pData) -= (*pOtherData);
-            pData += _increment;
-            pOtherData += otherIncrement;
-        }
-    }
-
-    template <typename ElementType, VectorOrientation orientation>
-    void VectorReference<ElementType, orientation>::operator+=(ElementType value)
-    {
-        Transform([value](ElementType x) {return x + value; });
-    }
-
-    template <typename ElementType, VectorOrientation orientation>
-    void VectorReference<ElementType, orientation>::operator-=(ElementType value)
-    {
-        (*this) += (-value);
-    }
-
-    template <typename ElementType, VectorOrientation orientation>
-    void VectorReference<ElementType, orientation>::operator*=(ElementType value)
-    {
-        Transform([value](ElementType x) {return x * value; });
-    }
-
-    template <typename ElementType, VectorOrientation orientation>
-    void VectorReference<ElementType, orientation>::operator/=(ElementType value)
-    {
-        if (value == 0)
-        {
-            throw utilities::NumericException(utilities::NumericExceptionErrors::divideByZero, "divide by zero");
-        }
-        (*this) *= (1 / value);
+        return VectorReference<ElementType, orientation>(GetDataPointer() + offset * this->GetIncrement(), size, this->GetIncrement());
     }
 
     //
@@ -472,43 +273,60 @@ namespace math
     Vector<ElementType, orientation>::Vector(size_t size)
         : VectorReference<ElementType, orientation>(nullptr, size, 1), _data(size)
     {
-        _pData = _data.data();
+        this->_pData = _data.data();
     }
 
     template <typename ElementType, VectorOrientation orientation>
     Vector<ElementType, orientation>::Vector(std::vector<ElementType> data)
         : VectorReference<ElementType, orientation>(nullptr, data.size(), 1), _data(std::move(data))
     {
-        _pData = _data.data();
+        this->_pData = _data.data();
     }
 
     template <typename ElementType, VectorOrientation orientation>
     Vector<ElementType, orientation>::Vector(std::initializer_list<ElementType> list)
         : VectorReference<ElementType, orientation>(nullptr, list.size(), 1), _data(list.begin(), list.end())
     {
-        _pData = _data.data();
+        this->_pData = _data.data();
     }
 
     template <typename ElementType, VectorOrientation orientation>
     Vector<ElementType, orientation>::Vector(Vector<ElementType, orientation>&& other)
-        : VectorReference<ElementType, orientation>(nullptr, other._size, other._increment), _data(std::move(other._data))
+        : VectorReference<ElementType, orientation>(nullptr, other.Size(), other.GetIncrement()), _data(std::move(other._data))
     {
-        _pData = _data.data();
+        this->_pData = _data.data();
     }
 
     template <typename ElementType, VectorOrientation orientation>
     Vector<ElementType, orientation>::Vector(const Vector<ElementType, orientation>& other)
-        : VectorReference<ElementType, orientation>(nullptr, other._size, other._increment), _data(other._data)
+        : VectorReference<ElementType, orientation>(nullptr, other.Size(), 1), _data(other.Size())
     {
         _pData = _data.data();
+        this->CopyFrom(other);
+    }
+
+    template <typename ElementType, VectorOrientation orientation>
+    Vector<ElementType, orientation>::Vector(ConstVectorReference<ElementType, orientation>& other)
+        : VectorReference<ElementType, orientation>(nullptr, other.Size(), 1), _data(other.Size())
+    {
+        _pData = _data.data();
+        this->CopyFrom(other);
+    }
+
+    template <typename ElementType, VectorOrientation orientation>
+    Vector<ElementType, orientation>::Vector(ConstVectorReference<ElementType, TransposeVectorOrientation<orientation>::value>& other)
+        : VectorReference<ElementType, orientation>(nullptr, other.Size(), 1), _data(other.Size())
+    {
+        _pData = _data.data();
+        this->CopyFrom(other);
     }
 
     template <typename ElementType, VectorOrientation orientation>
     void Vector<ElementType, orientation>::Resize(size_t size)
     {
         _data.resize(size);
-        _pData = _data.data();
-        _size = size;
+        this->_pData = _data.data();
+        this->_size = size;
     }
 
     template <typename ElementType, VectorOrientation orientation>
@@ -525,6 +343,33 @@ namespace math
         std::swap(_data, other._data);
     }
 
+    template <typename ElementType, VectorOrientation orientation>
+    utilities::StlStridedIterator<typename std::vector<ElementType>::iterator> begin(Vector<ElementType, orientation>& vector)
+    {
+        return { vector._data.begin(), static_cast<ptrdiff_t>(vector.GetIncrement()) };
+    }
+
+    template <typename ElementType, VectorOrientation orientation>
+    utilities::StlStridedIterator<typename std::vector<ElementType>::const_iterator> begin(const Vector<ElementType, orientation>& vector)
+    {
+        return { vector._data.cbegin(), static_cast<ptrdiff_t>(vector.GetIncrement()) };
+    }
+
+    template <typename ElementType, VectorOrientation orientation>
+    utilities::StlStridedIterator<typename std::vector<ElementType>::iterator> end(Vector<ElementType, orientation>& vector)
+    {
+        return { vector._data.end(), static_cast<ptrdiff_t>(vector.GetIncrement()) };
+    }
+
+    template <typename ElementType, VectorOrientation orientation>
+    utilities::StlStridedIterator<typename std::vector<ElementType>::const_iterator> end(const Vector<ElementType, orientation>& vector)
+    {
+        return { vector._data.cend(), static_cast<ptrdiff_t>(vector.GetIncrement()) };
+    }
+
+    //
+    // VectorArchiver
+    //
     template <typename ElementType, VectorOrientation orientation>
     void VectorArchiver::Write(const Vector<ElementType, orientation>& vector, const std::string& name, utilities::Archiver& archiver)
     {

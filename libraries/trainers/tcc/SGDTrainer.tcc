@@ -15,6 +15,9 @@
 #include "Dataset.h"
 #include "DataVectorOperations.h"
 
+// math
+#include "VectorOperations.h"
+
 namespace ell
 {
 namespace trainers
@@ -135,7 +138,11 @@ namespace trainers
     {
         const double lambda = _parameters.regularization;
         _lastPredictor.Resize(_v.Size());
-        _lastPredictor.GetWeights().CopyFrom((-1 / (lambda * _t)) * _v);
+        auto& w = _lastPredictor.GetWeights();
+
+        // define last predictor based on _v, _a, _t
+        w.Reset();
+        w += (-1 / (lambda * _t)) * _v;
         _lastPredictor.GetBias() = -_a / (lambda * _t);
         return _lastPredictor;
     }
@@ -145,8 +152,13 @@ namespace trainers
     {
         const double lambda = _parameters.regularization;
         _averagedPredictor.Resize(_v.Size());
-        _averagedPredictor.GetWeights().CopyFrom(-_h / (lambda * _t) * _v);
-        _averagedPredictor.GetWeights() += 1 / (lambda * _t) * _u;
+        auto& w = _averagedPredictor.GetWeights();
+
+        // define averaged predictor based on _v, _h, _u, _t
+        w.Reset();
+        w += -_h / (lambda * _t) * _v;
+        w += 1 / (lambda * _t) * _u;
+        
         _averagedPredictor.GetBias() = -_c / (lambda * _t);
         return _averagedPredictor;
     }
@@ -226,7 +238,8 @@ namespace trainers
     {
         const double lambda = _parameters.regularization;
         _lastPredictor.Resize(_v.Size());
-        _lastPredictor.GetWeights().CopyFrom((-1 / (lambda * _t)) * _v);
+        auto& w = _lastPredictor.GetWeights();
+        w += (-1 / (lambda * _t)) * _v;
         _lastPredictor.GetBias() = -_a / (lambda * _t);
         return _lastPredictor;
     }
@@ -237,9 +250,13 @@ namespace trainers
         const double lambda = _parameters.regularization;
         const double coeff = 1.0 / (lambda * _t);
         _averagedPredictor.Resize(_v.Size());
-        _averagedPredictor.GetWeights().CopyFrom(-_h * coeff * _v);
-        _averagedPredictor.GetWeights() += coeff * _u;
-        _averagedPredictor.GetWeights() += _c * coeff * _center.Transpose();
+        auto& w = _averagedPredictor.GetWeights();
+
+        // define last predictor based on _v, _u, _c
+        w.Reset();
+        w += -_h * coeff * _v;
+        w += coeff * _u;
+        w += _c * coeff * _center.Transpose();
 
         _averagedPredictor.GetBias() = -_s * coeff;
         return _averagedPredictor;
@@ -261,19 +278,19 @@ namespace trainers
     //
 
     template <typename LossFunctionType>
-    std::unique_ptr<ITrainer<predictors::LinearPredictor>> MakeSGDTrainer(const LossFunctionType& lossFunction, const SGDTrainerParameters& parameters)
+    std::unique_ptr<ITrainer<predictors::LinearPredictor<double>>> MakeSGDTrainer(const LossFunctionType& lossFunction, const SGDTrainerParameters& parameters)
     {
         return std::make_unique<SGDTrainer<LossFunctionType>>(lossFunction, parameters);
     }
 
     template <typename LossFunctionType>
-    std::unique_ptr<ITrainer<predictors::LinearPredictor>> MakeSparseDataSGDTrainer(const LossFunctionType& lossFunction, const SGDTrainerParameters& parameters)
+    std::unique_ptr<ITrainer<predictors::LinearPredictor<double>>> MakeSparseDataSGDTrainer(const LossFunctionType& lossFunction, const SGDTrainerParameters& parameters)
     {
         return std::make_unique<SparseDataSGDTrainer<LossFunctionType>>(lossFunction, parameters);
     }
 
     template <typename LossFunctionType>
-    std::unique_ptr<ITrainer<predictors::LinearPredictor>> MakeSparseDataCenteredSGDTrainer(const LossFunctionType& lossFunction, math::RowVector<double> center, const SGDTrainerParameters& parameters)
+    std::unique_ptr<ITrainer<predictors::LinearPredictor<double>>> MakeSparseDataCenteredSGDTrainer(const LossFunctionType& lossFunction, math::RowVector<double> center, const SGDTrainerParameters& parameters)
     {
         return std::make_unique<SparseDataCenteredSGDTrainer<LossFunctionType>>(lossFunction, std::move(center), parameters);
     }

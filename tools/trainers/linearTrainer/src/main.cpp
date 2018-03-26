@@ -30,7 +30,7 @@
 #include "TrainerArguments.h"
 
 // model
-#include "DynamicMap.h"
+#include "Map.h"
 #include "Model.h"
 
 // nodes
@@ -50,6 +50,24 @@
 #include <memory>
 
 using namespace ell;
+
+template <typename ElementType>
+model::Map AppendTrainedLinearPredictorToMap(const predictors::LinearPredictor<ElementType>& trainedPredictor, model::Map& map, size_t dimension)
+{
+    predictors::LinearPredictor<ElementType> predictor(trainedPredictor);
+    predictor.Resize(dimension);
+
+    model::Model& model = map.GetModel();
+    auto mapOutput = map.GetOutputElements<ElementType>(0);
+    auto predictorNode = model.AddNode<nodes::LinearPredictorNode<ElementType>>(mapOutput, predictor);
+    auto outputNode = model.AddNode<model::OutputNode<ElementType>>(predictorNode->output);
+
+    auto& output = outputNode->output;
+    auto outputMap = model::Map(map.GetModel(), { { "input", map.GetInput() } }, { { "output", output } });
+
+    return outputMap;
+}
+
 
 int main(int argc, char* argv[])
 {
@@ -89,7 +107,8 @@ int main(int argc, char* argv[])
         // load dataset
         if (trainerArguments.verbose) std::cout << "Loading data ..." << std::endl;
         auto stream = utilities::OpenIfstream(dataLoadArguments.inputDataFilename);
-        auto mappedDataset = common::GetMappedDataset(stream, map);
+        auto parsedDataset = common::GetDataset(stream);
+        auto mappedDataset = common::TransformDataset(parsedDataset, map);
         auto mappedDatasetDimension = map.GetOutput(0).Size();
 
         // normalize data
@@ -106,12 +125,13 @@ int main(int argc, char* argv[])
             auto normalizer = predictors::MakeTransformationNormalizer<data::IterationPolicy::skipZeros>(coordinateTransformation);
 
             // apply normalizer to data
-            auto normalizedDataset = common::GetMappedDataset(mappedDataset.GetExampleIterator(), normalizer);
+            auto normalizedDataset = common::TransformDataset(mappedDataset, normalizer);
+
             mappedDataset.Swap(normalizedDataset);
         }
 
         // predictor type
-        using PredictorType = predictors::LinearPredictor;
+        using PredictorType = predictors::LinearPredictor<double>;
 
         // create linear trainer
         std::unique_ptr<trainers::ITrainer<PredictorType>> trainer;
@@ -121,19 +141,19 @@ int main(int argc, char* argv[])
             trainer = common::MakeSGDTrainer(trainerArguments.lossFunctionArguments, { linearTrainerArguments.regularization, linearTrainerArguments.randomSeedString });
             break;
         case LinearTrainerArguments::Algorithm::SparseDataSGD:
-            trainer = common::MakeSparseDataSGDTrainer(trainerArguments.lossFunctionArguments, { linearTrainerArguments.regularization });
+            trainer = common::MakeSparseDataSGDTrainer(trainerArguments.lossFunctionArguments, { linearTrainerArguments.regularization, linearTrainerArguments.randomSeedString });
             break;
         case LinearTrainerArguments::Algorithm::SparseDataCenteredSGD:
-        {
-            auto mean = trainers::CalculateMean(mappedDataset.GetAnyDataset());
-            trainer = common::MakeSparseDataCenteredSGDTrainer(trainerArguments.lossFunctionArguments, mean, { linearTrainerArguments.regularization });
-            break;
-        }
+            {
+                auto mean = trainers::CalculateMean(mappedDataset.GetAnyDataset());
+                trainer = common::MakeSparseDataCenteredSGDTrainer(trainerArguments.lossFunctionArguments, mean, { linearTrainerArguments.regularization, linearTrainerArguments.randomSeedString });
+                break;
+            }
         case LinearTrainerArguments::Algorithm::SDCA:
-        {
-            trainer = common::MakeSDCATrainer(trainerArguments.lossFunctionArguments, { linearTrainerArguments.regularization, linearTrainerArguments.desiredPrecision, linearTrainerArguments.maxEpochs, linearTrainerArguments.permute, linearTrainerArguments.randomSeedString });
-            break;
-        }
+            {
+                trainer = common::MakeSDCATrainer(trainerArguments.lossFunctionArguments, { linearTrainerArguments.regularization, linearTrainerArguments.desiredPrecision, linearTrainerArguments.maxEpochs, linearTrainerArguments.permute, linearTrainerArguments.randomSeedString });
+                break;
+            }
         default:
             throw utilities::InputException(utilities::InputExceptionErrors::invalidArgument, "unrecognized algorithm type");
         }
@@ -151,9 +171,6 @@ int main(int argc, char* argv[])
             evaluator->Evaluate(trainer->GetPredictor());
         }
         
-        predictors::LinearPredictor predictor(trainer->GetPredictor());
-        predictor.Resize(mappedDatasetDimension);
-
         // Print loss and errors
         if (trainerArguments.verbose)
         {
@@ -168,9 +185,25 @@ int main(int argc, char* argv[])
         // Save predictor model
         if (modelSaveArguments.outputModelFilename != "")
         {
-            // Create a model
-            auto model = common::AppendNodeToModel<nodes::LinearPredictorNode, PredictorType>(map, predictor);
-            common::SaveModel(model, modelSaveArguments.outputModelFilename);
+            // Create a new map with the linear predictor appended.
+            switch (map.GetOutputType())
+            {
+            case model::Port::PortType::smallReal:
+                {
+                    auto outputMap = AppendTrainedLinearPredictorToMap<float>(trainer->GetPredictor(), map, mappedDatasetDimension);
+                    common::SaveMap(outputMap, modelSaveArguments.outputModelFilename);
+                }
+                break;
+            case model::Port::PortType::real:
+                {
+                    auto outputMap = AppendTrainedLinearPredictorToMap<double>(trainer->GetPredictor(), map, mappedDatasetDimension);
+                    common::SaveMap(outputMap, modelSaveArguments.outputModelFilename);
+                }
+                break;
+            default:
+                std::cerr << "Unexpected output type for model. Should be double or float." << std::endl;
+                break;
+            };
         }
     }
     catch (const utilities::CommandLineParserPrintHelpException& exception)

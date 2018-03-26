@@ -14,6 +14,7 @@
 
 // utilities
 #include "UniqueId.h"
+#include "Logger.h"
 
 // stl
 #include <algorithm>
@@ -21,12 +22,13 @@
 #include <iterator>
 #include <numeric>
 #include <string>
-#include <time.h>
 
 namespace ell
 {
 namespace model
 {
+    using namespace logging;
+
     void CompilableNode::CompileNode(MapCompiler& compiler)
     {
         auto irCompiler = dynamic_cast<IRMapCompiler*>(&compiler);
@@ -38,29 +40,37 @@ namespace model
         emitters::IRModuleEmitter& moduleEmitter = irCompiler->GetModule();
         auto& enclosingFunction = moduleEmitter.GetCurrentFunction();
 
-        if (ShouldCompileInline() || compiler.GetMapCompilerParameters().inlineNodes)
+        if (ShouldCompileInline() || compiler.GetMapCompilerOptions().inlineNodes)
         {
+            Log() << "Inlining node " << DiagnosticString(*this) << " into function " << enclosingFunction.GetFunctionName() << EOL;
+
             irCompiler->NewNodeRegion(*this);
             Compile(*irCompiler, enclosingFunction);
             irCompiler->TryMergeNodeRegion(*this);
         }
         else
         {
+            Log() << "Not inlining code for node " << DiagnosticString(*this) << EOL;
+
             // Emit code for function if it doesn't exist yet
             auto functionName = GetCompiledFunctionName();
             if (!moduleEmitter.HasFunction(functionName))
             {
+                Log() << "Creating new function for " << DiagnosticString(*this) << EOL;
+
                 compiler.PushScope();
                 emitters::NamedVariableTypeList args = GetNodeFunctionParameterList(*irCompiler);
 
                 // TODO: combine precompiled-IR case with use-own-function case
                 if (HasPrecompiledIR())
                 {
+                    Log() << DiagnosticString(*this) << " has precompiled IR" << EOL;
                     auto functionCode = GetPrecompiledIR();
                     moduleEmitter.LoadIR(functionCode);
                 }
                 else if (HasOwnFunction())
                 {
+                    Log() << DiagnosticString(*this) << " has its own function" << EOL;
                     EmitNodeFunction(moduleEmitter);
                 }
                 else
@@ -73,9 +83,15 @@ namespace model
                 }
                 compiler.PopScope();
             }
+            else
+            {
+                Log() << "Function " << functionName << " already exists for " << DiagnosticString(*this) << EOL;
+            }
 
             // Call function for node
+            irCompiler->NewNodeRegion(*this);
             CallNodeFunction(*irCompiler, enclosingFunction);
+            irCompiler->TryMergeNodeRegion(*this);
         }
     }
 
@@ -83,7 +99,7 @@ namespace model
     {
         throw utilities::LogicException(utilities::LogicExceptionErrors::notImplemented);
     }
-    
+
     bool CompilableNode::ShouldCompileInline() const
     {
         // Make sure all inputs have only pure ports
@@ -204,6 +220,7 @@ namespace model
     {
         int numArgs = GetInputPorts().size() + GetOutputPorts().size();
         std::vector<llvm::Value*> args;
+        args.reserve(numArgs);
 
         for (auto port : GetInputPorts())
         {
@@ -259,6 +276,7 @@ namespace model
         assert(function != nullptr);
         auto args = GetNodeFunctionArguments(compiler, currentFunction);
         currentFunction.Call(function, args);
+        Log() << "Emitting call to node function " << functionName << EOL;
     }
 }
 }

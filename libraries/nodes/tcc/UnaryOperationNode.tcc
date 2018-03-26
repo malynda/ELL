@@ -2,7 +2,7 @@
 //
 //  Project:  Embedded Learning Library (ELL)
 //  File:     UnaryOperationNode.tcc (nodes)
-//  Authors:  Chuck Jacobs
+//  Authors:  Chuck Jacobs, Kern Handa
 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -27,6 +27,8 @@ namespace nodes
                 ADD_TO_STRING_ENTRY(emitters::UnaryOperationType, logicalNot);
                 ADD_TO_STRING_ENTRY(emitters::UnaryOperationType, tanh);
                 ADD_TO_STRING_ENTRY(emitters::UnaryOperationType, exp);
+                ADD_TO_STRING_ENTRY(emitters::UnaryOperationType, square);
+                ADD_TO_STRING_ENTRY(emitters::UnaryOperationType, log);
 
                 default:
                     throw utilities::InputException(utilities::InputExceptionErrors::indexOutOfRange, "Unknown unary operation");
@@ -41,6 +43,8 @@ namespace nodes
             ADD_FROM_STRING_ENTRY(emitters::UnaryOperationType, logicalNot);
             ADD_FROM_STRING_ENTRY(emitters::UnaryOperationType, tanh);
             ADD_FROM_STRING_ENTRY(emitters::UnaryOperationType, exp);
+            ADD_FROM_STRING_ENTRY(emitters::UnaryOperationType, square);
+            ADD_FROM_STRING_ENTRY(emitters::UnaryOperationType, log);
 
             throw utilities::InputException(utilities::InputExceptionErrors::indexOutOfRange, "Unknown unary operation");
         }
@@ -92,17 +96,41 @@ namespace nodes
         {
             throw utilities::InputException(utilities::InputExceptionErrors::typeMismatch, "Error: taking exp of a boolean value");
         }
+
+        template <typename ValueType>
+        ValueType Square(ValueType a)
+        {
+            return a * a;
+        }
+
+        template <>
+        inline bool Square(bool)
+        {
+            throw utilities::InputException(utilities::InputExceptionErrors::typeMismatch, "Error: taking square of a boolean value");
+        }
+
+        template <typename ValueType>
+        ValueType Log(ValueType a)
+        {
+            return std::log(a);
+        }
+
+        template <>
+        inline bool Log(bool)
+        {
+            throw utilities::InputException(utilities::InputExceptionErrors::typeMismatch, "Error: taking log of a boolean value");
+        }
     }
 
     template <typename ValueType>
     UnaryOperationNode<ValueType>::UnaryOperationNode()
-        : CompilableNode({ &_input }, { &_output }), _input(this, {}, inputPortName), _output(this, outputPortName, 0), _operation(emitters::UnaryOperationType::none)
+        : CompilableNode({ &_input }, { &_output }), _input(this, {}, defaultInputPortName), _output(this, defaultOutputPortName, 0), _operation(emitters::UnaryOperationType::none)
     {
     }
 
     template <typename ValueType>
     UnaryOperationNode<ValueType>::UnaryOperationNode(const model::PortElements<ValueType>& input, emitters::UnaryOperationType operation)
-        : CompilableNode({ &_input }, { &_output }), _input(this, input, inputPortName), _output(this, outputPortName, _input.Size()), _operation(operation)
+        : CompilableNode({ &_input }, { &_output }), _input(this, input, defaultInputPortName), _output(this, defaultOutputPortName, _input.Size()), _operation(operation)
     {
     }
 
@@ -124,29 +152,26 @@ namespace nodes
         std::vector<ValueType> output;
         switch (_operation)
         {
-            case emitters::UnaryOperationType::sqrt:
-            {
-                output = ComputeOutput(UnaryOperations::Sqrt<ValueType>);
-            }
+        case emitters::UnaryOperationType::sqrt:
+            output = ComputeOutput(UnaryOperations::Sqrt<ValueType>);
             break;
-            case emitters::UnaryOperationType::logicalNot:
-            {
-                output = ComputeOutput(UnaryOperations::LogicalNot<ValueType>);
-            }
+        case emitters::UnaryOperationType::logicalNot:
+            output = ComputeOutput(UnaryOperations::LogicalNot<ValueType>);
             break;
-            case emitters::UnaryOperationType::exp:
-            {
-                output = ComputeOutput(UnaryOperations::Exp<ValueType>);
-            }
+        case emitters::UnaryOperationType::exp:
+            output = ComputeOutput(UnaryOperations::Exp<ValueType>);
             break;
-            case emitters::UnaryOperationType::tanh:
-            {
-                output = ComputeOutput(UnaryOperations::Tanh<ValueType>);
-            }
+        case emitters::UnaryOperationType::tanh:
+            output = ComputeOutput(UnaryOperations::Tanh<ValueType>);
             break;
-
-            default:
-                throw utilities::LogicException(utilities::LogicExceptionErrors::notImplemented, "Unknown operation type");
+        case emitters::UnaryOperationType::square:
+            output = ComputeOutput(UnaryOperations::Square<ValueType>);
+            break;
+        case emitters::UnaryOperationType::log:
+            output = ComputeOutput(UnaryOperations::Log<ValueType>);
+            break;
+        default:
+            throw utilities::LogicException(utilities::LogicExceptionErrors::notImplemented, "Unknown operation type");
         }
         _output.SetOutput(output);
     };
@@ -165,10 +190,34 @@ namespace nodes
         switch (this->GetOperation())
         {
             case emitters::UnaryOperationType::sqrt:
-            {
                 return function.GetModule().GetRuntime().GetSqrtFunction<ValueType>();
+            case emitters::UnaryOperationType::exp:
+                return function.GetModule().GetRuntime().GetExpFunction<ValueType>();
+            case emitters::UnaryOperationType::log:
+                return function.GetModule().GetRuntime().GetLogFunction<ValueType>();
+            case emitters::UnaryOperationType::logicalNot:
+            {
+                auto& module = function.GetModule();
+                auto& f = module.BeginFunction("logicalNot", emitters::GetVariableType<bool>(), {emitters::GetVariableType<ValueType>()});
+                auto args = f.Arguments().begin();
+                llvm::Argument& val = *args;
+                f.Return(f.LogicalNot(&val));
+                module.EndFunction();
+                return f.GetFunction();
             }
-            break;
+            case emitters::UnaryOperationType::square:
+            {
+                auto& module = function.GetModule();
+                auto& f = module.BeginFunction("square", emitters::GetVariableType<ValueType>(), { emitters::GetVariableType<ValueType>() });
+                auto args = f.Arguments().begin();
+                llvm::Argument& val = *args;
+                f.Return(f.Operator(emitters::GetMultiplyForValueType<ValueType>(), &val, &val));
+                module.EndFunction();
+                return f.GetFunction();
+            }
+            case emitters::UnaryOperationType::tanh:
+                return function.GetModule().GetRuntime().GetTanhFunction<ValueType>();
+            case emitters::UnaryOperationType::none:
             default:
                 throw emitters::EmitterException(emitters::EmitterError::unaryOperationNotSupported);
         }
@@ -177,7 +226,7 @@ namespace nodes
     template <typename ValueType>
     void UnaryOperationNode<ValueType>::Compile(model::IRMapCompiler& compiler, emitters::IRFunctionEmitter& function)
     {
-        if (IsPureVector(input) && !compiler.GetCompilerParameters().unrollLoops)
+        if (IsPureVector(input) && !compiler.GetCompilerOptions().unrollLoops)
         {
             CompileLoop(compiler, function);
         }
@@ -223,7 +272,7 @@ namespace nodes
     void UnaryOperationNode<ValueType>::WriteToArchive(utilities::Archiver& archiver) const
     {
         Node::WriteToArchive(archiver);
-        archiver[inputPortName] << _input;
+        archiver[defaultInputPortName] << _input;
         archiver["operation"] << UnaryOperations::to_string(_operation);
     }
 
@@ -231,7 +280,7 @@ namespace nodes
     void UnaryOperationNode<ValueType>::ReadFromArchive(utilities::Unarchiver& archiver)
     {
         Node::ReadFromArchive(archiver);
-        archiver[inputPortName] >> _input;
+        archiver[defaultInputPortName] >> _input;
         std::string operation;
         archiver["operation"] >> operation;
         _operation = UnaryOperations::from_string(operation);

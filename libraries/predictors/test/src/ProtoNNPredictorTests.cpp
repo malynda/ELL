@@ -15,8 +15,6 @@ using namespace ell;
 
 void ProtoNNPredictorTest()
 {
-    using ExampleType = predictors::ProtoNNPredictor::DataVectorType;
-
     size_t dim = 5, projectedDim = 4, numPrototypes = 3, numLabels = 2;
     double gamma = 0.3;
     predictors::ProtoNNPredictor protonnPredictor(dim, projectedDim, numPrototypes, numLabels, gamma);
@@ -42,16 +40,19 @@ void ProtoNNPredictorTest()
     // numLabels * numPrototypes
     auto Z = protonnPredictor.GetLabelEmbeddings().GetReference();
     // clang-format off
-    Z(0, 0) = 0.1; Z(0, 1) = 0.3, Z(0, 2) = 0.2;
-    Z(1, 0) = 0.2; Z(1, 1) = 0.4, Z(1, 2) = 0.8;
+    Z(0, 0) = 0.1; Z(0, 1) = 0.3; Z(0, 2) = 0.2;
+    Z(1, 0) = 0.2; Z(1, 1) = 0.4; Z(1, 2) = 0.8;
     // clang-format on
 
-    predictors::ProtoNNPrediction result = protonnPredictor.Predict(ExampleType{ 0.2, 0.5, 0.6, 0.8, 0.1 });
+    auto prediction = protonnPredictor.Predict(std::vector<double>{ 0.2, 0.5, 0.6, 0.8, 0.1 });
 
-    size_t R = 1;
+    auto maxElement = std::max_element(prediction.GetDataPointer(), prediction.GetDataPointer() + prediction.Size());
+    ptrdiff_t maxLabelIndex = maxElement - prediction.GetDataPointer();
+
+    ptrdiff_t R = 1;
     double score = 1.321484;
 
-    testing::ProcessTest("ProtoNNPredictorTest", testing::IsEqual(result.label, R));
-    testing::ProcessTest("ProtoNNPredictorTest", testing::IsEqual(result.score, score, 1e-6));
+    testing::ProcessTest("ProtoNNPredictorTest", testing::IsEqual(maxLabelIndex, R));
+    testing::ProcessTest("ProtoNNPredictorTest", testing::IsEqual(*maxElement, score, 1e-6));
 }
 

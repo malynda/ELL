@@ -14,6 +14,7 @@
 
 // utilities
 #include "Exception.h"
+#include "Unused.h"
 
 // stl
 #include <iostream>
@@ -22,55 +23,14 @@ using namespace ell;
 
 /// Runs all tests
 ///
-int main()
+int main(int argc, char** argv)
 {
+    UNUSED(argc);
+    UNUSED(argv);
     try
     {
-        //
-        // Compute tests
-        //
-        TestL2NormNodeCompute();
-        TestAccumulatorNodeCompute();
-        TestDelayNodeCompute();
-        TestMovingAverageNodeCompute();
-        TestMovingVarianceNodeCompute();
-        TestUnaryOperationNodeCompute();
-        TestUnaryOperationNodeCompute1();
-        TestBinaryOperationNodeCompute();
-        TestLinearPredictorNodeCompute();
-        TestDemultiplexerNodeCompute();
-        TestDTWDistanceNodeCompute();
-        TestSourceNodeCompute();
-        TestSinkNodeCompute();
-
-        TestBiasLayerNode();
-        TestBatchNormalizationLayerNode();
-        TestNeuralNetworkPredictorNode();
-
-        // Neural nets
-        TestNeuralNetworkPredictorNode();
-        TestActivationLayerNode();
-        TestBatchNormalizationLayerNode();
-        TestBiasLayerNode();
-        TestBinaryConvolutionalLayerNode();
-        TestConvolutionalLayerNode();
-        TestFullyConnectedLayerNode();
-        TestPoolingLayerNode();
-        TestScalingLayerNode();
-        TestSoftmaxLayerNode();
-
-        TestArchiveNeuralNetworkPredictorNode();
-        TestArchiveNeuralNetworkLayerNodes();
-
-        //
-        // Refine tests
-        //
-        TestMovingAverageNodeRefine();
-        TestLinearPredictorNodeRefine();
-        TestSimpleForestPredictorNodeRefine();
-        TestDemultiplexerNodeRefine();
-        TestMatrixVectorProductRefine();
-        TestProtoNNPredictorNode();
+        NodesTests();
+        NeuralNetworkLayerNodesTests();
     }
     catch (const utilities::Exception& exception)
     {

@@ -13,10 +13,11 @@
 // stl
 #include <cassert>
 #include <cctype>
-#include <iostream>
+#include <istream>
+#include <ostream>
 #include <sstream>
 
-// Note: BUFFER_SIZE must be larger than the largest readable token 
+// Note: BUFFER_SIZE must be larger than the largest readable token
 #define BUFFER_SIZE 1024*1024
 
 namespace ell
@@ -50,17 +51,18 @@ namespace utilities
         // eat whitespace and add first char
         while (IsValid())
         {
-            auto ch = GetNextCharacter();
-            if (ch == EOF)
+            auto result = GetNextCharacter();
+            if (result == EOF)
             {
                 _tokenStart = _currentPosition;
                 return token;
             }
-            else if (!std::isspace(ch))
+            auto ch = static_cast<char>(result);
+            if (!std::isspace(ch))
             {
-                token.push_back((char)ch);
-                bool isParsingString = _currentStringDelimiter != '\0';
-                bool isStringDelimiter = _stringDelimiters.find(ch) != std::string::npos;
+                token.push_back(ch);
+                auto isParsingString = _currentStringDelimiter != '\0';
+                auto isStringDelimiter = _stringDelimiters.find(ch) != std::string::npos;
                 if (isParsingString) // we're in the middle of parsing a string: probably because we just read in a quotation mark last time
                 {
                     if (isStringDelimiter)
@@ -98,11 +100,12 @@ namespace utilities
         bool prevEscaped = false;
         while (IsValid())
         {
-            auto ch = GetNextCharacter();
-            if (ch == EOF)
+            auto result = GetNextCharacter();
+            if (result == EOF)
             {
                 break;
             }
+            auto ch = static_cast<char>(result);
 
             if (_currentStringDelimiter != '\0') // we're in read-string mode
             {
@@ -122,7 +125,7 @@ namespace utilities
                 break;
             }
 
-            token.push_back((char)ch);
+            token.push_back(ch);
             prevEscaped = !prevEscaped && ch == escapeChar;
         }
 
@@ -147,14 +150,14 @@ namespace utilities
         _peekedTokens.push(token);
     }
 
-    void Tokenizer::PrintTokens()
+    void Tokenizer::PrintTokens(std::ostream& os)
     {
         while (true)
         {
             auto token = ReadNextToken();
             if (token == "")
                 break;
-            std::cout << "Token: " << token << std::endl;
+            os << "Token: " << token << std::endl;
         }
     }
 
@@ -199,8 +202,7 @@ namespace utilities
 
     bool Tokenizer::IsValid()
     {
-        bool inIsValid = (bool)_in;
-        return (bool)_in || _textBuffer.size() > 0 || _peekedTokens.size() > 0;
+        return static_cast<bool>(_in) || !_textBuffer.empty() || !_peekedTokens.empty();
     }
 
     int Tokenizer::GetNextCharacter()
@@ -209,8 +211,8 @@ namespace utilities
         {
             ReadData();
         }
-        
-        if(_currentPosition == _bufferEnd)
+
+        if (_currentPosition == _bufferEnd)
         {
             return EOF;
         }
@@ -231,7 +233,7 @@ namespace utilities
         // Allocate textBuffer if it's empty
         auto oldLength = _bufferEnd - _tokenStart;
         auto oldOffset = _currentPosition - _tokenStart;
-        if(_textBuffer.size() == 0)
+        if (_textBuffer.empty())
         {
             _textBuffer.resize(BUFFER_SIZE, '\0');
             _bufferEnd = _textBuffer.end();

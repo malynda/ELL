@@ -16,6 +16,7 @@ namespace utilities
     template <typename ValueType, IsFundamental<ValueType> concept>
     void JsonArchiver::WriteScalar(const char* name, const ValueType& value)
     {
+        EnsureMaxPrecision<ValueType> precisionScope(_out);
         auto indent = GetCurrentIndent();
         bool hasName = name != std::string("");
         auto endOfLine = hasName ? ",\n" : "";
@@ -129,7 +130,7 @@ namespace utilities
 
         // read string
         auto valueToken = _tokenizer.ReadNextToken();
-        if(std::is_same<ValueType, uint64_t>())
+        if (std::is_same<ValueType, uint64_t>())
             value = static_cast<ValueType>(std::stoull(valueToken));
         else
             value = static_cast<ValueType>(std::stoll(valueToken));

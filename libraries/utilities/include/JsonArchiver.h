@@ -11,13 +11,11 @@
 #include "Archiver.h"
 #include "Exception.h"
 #include "Tokenizer.h"
-#include "TypeFactory.h"
-#include "TypeName.h"
 
 // stl
 #include <cstddef>
 #include <cstdint>
-#include <memory>
+#include <istream>
 #include <ostream>
 #include <sstream>
 #include <string>
@@ -41,37 +39,23 @@ namespace utilities
         JsonArchiver(std::ostream& outputStream);
 
     protected:
-        DECLARE_ARCHIVE_VALUE_OVERRIDE(bool);
-        DECLARE_ARCHIVE_VALUE_OVERRIDE(char);
-        DECLARE_ARCHIVE_VALUE_OVERRIDE(short);
-        DECLARE_ARCHIVE_VALUE_OVERRIDE(int);
-        DECLARE_ARCHIVE_VALUE_OVERRIDE(size_t);
-        DECLARE_ARCHIVE_VALUE_OVERRIDE(int64_t);
-#ifdef __APPLE__
-        DECLARE_ARCHIVE_VALUE_OVERRIDE(uint64_t);
-#endif
-        DECLARE_ARCHIVE_VALUE_OVERRIDE(float);
-        DECLARE_ARCHIVE_VALUE_OVERRIDE(double);
-        virtual void ArchiveValue(const char* name, const std::string& value) override;
+        #define ARCHIVE_TYPE_OP(t) DECLARE_ARCHIVE_VALUE_OVERRIDE(t);
+        ARCHIVABLE_TYPES_LIST
+        #undef ARCHIVE_TYPE_OP
 
-        DECLARE_ARCHIVE_ARRAY_OVERRIDE(bool);
-        DECLARE_ARCHIVE_ARRAY_OVERRIDE(char);
-        DECLARE_ARCHIVE_ARRAY_OVERRIDE(short);
-        DECLARE_ARCHIVE_ARRAY_OVERRIDE(int);
-        DECLARE_ARCHIVE_ARRAY_OVERRIDE(size_t);
-        DECLARE_ARCHIVE_ARRAY_OVERRIDE(int64_t);
-#ifdef __APPLE__
-        DECLARE_ARCHIVE_ARRAY_OVERRIDE(uint64_t);
-#endif
-        DECLARE_ARCHIVE_ARRAY_OVERRIDE(float);
-        DECLARE_ARCHIVE_ARRAY_OVERRIDE(double);
-        virtual void ArchiveArray(const char* name, const std::vector<std::string>& array) override;
-        virtual void ArchiveArray(const char* name, const std::string& baseTypeName, const std::vector<const IArchivable*>& array) override;
+        void ArchiveValue(const char* name, const std::string& value) override;
 
-        virtual void BeginArchiveObject(const char* name, const IArchivable& value) override;
-        virtual void EndArchiveObject(const char* name, const IArchivable& value) override;
+        #define ARCHIVE_TYPE_OP(t) DECLARE_ARCHIVE_ARRAY_OVERRIDE(t);
+        ARCHIVABLE_TYPES_LIST
+        #undef ARCHIVE_TYPE_OP
 
-        virtual void EndArchiving() override;
+        void ArchiveArray(const char* name, const std::vector<std::string>& array) override;
+        void ArchiveArray(const char* name, const std::string& baseTypeName, const std::vector<const IArchivable*>& array) override;
+
+        void BeginArchiveObject(const char* name, const IArchivable& value) override;
+        void EndArchiveObject(const char* name, const IArchivable& value) override;
+
+        void EndArchiving() override;
 
     private:
         // Serialization
@@ -114,41 +98,34 @@ namespace utilities
         /// <param name="inputStream"> The stream to read data from. </summary>
         JsonUnarchiver(std::istream& inputStream, SerializationContext context);
 
+        /// <summary> Indicates if a property with the given name is available to be read next </summary>
+        ///
+        /// <param name="name"> The name of the property </param>
+        ///
+        /// <returns> true if a property with the given name can be read next </returns>
+        bool HasNextPropertyName(const std::string& name) override;
+
     protected:
-        DECLARE_UNARCHIVE_VALUE_OVERRIDE(bool);
-        DECLARE_UNARCHIVE_VALUE_OVERRIDE(char);
-        DECLARE_UNARCHIVE_VALUE_OVERRIDE(short);
-        DECLARE_UNARCHIVE_VALUE_OVERRIDE(int);
-        DECLARE_UNARCHIVE_VALUE_OVERRIDE(size_t);
-        DECLARE_UNARCHIVE_VALUE_OVERRIDE(int64_t);
-#ifdef __APPLE__
-        DECLARE_UNARCHIVE_VALUE_OVERRIDE(uint64_t);
-#endif
-        DECLARE_UNARCHIVE_VALUE_OVERRIDE(float);
-        DECLARE_UNARCHIVE_VALUE_OVERRIDE(double);
-        virtual void UnarchiveValue(const char* name, std::string& value) override;
+        #define ARCHIVE_TYPE_OP(t) DECLARE_UNARCHIVE_VALUE_OVERRIDE(t);
+        ARCHIVABLE_TYPES_LIST
+        #undef ARCHIVE_TYPE_OP
 
-        DECLARE_UNARCHIVE_ARRAY_OVERRIDE(bool);
-        DECLARE_UNARCHIVE_ARRAY_OVERRIDE(char);
-        DECLARE_UNARCHIVE_ARRAY_OVERRIDE(short);
-        DECLARE_UNARCHIVE_ARRAY_OVERRIDE(int);
-        DECLARE_UNARCHIVE_ARRAY_OVERRIDE(size_t);
-        DECLARE_UNARCHIVE_ARRAY_OVERRIDE(int64_t);
-#ifdef __APPLE__
-        DECLARE_UNARCHIVE_ARRAY_OVERRIDE(uint64_t);
-#endif
-        DECLARE_UNARCHIVE_ARRAY_OVERRIDE(float);
-        DECLARE_UNARCHIVE_ARRAY_OVERRIDE(double);
-        virtual void UnarchiveArray(const char* name, std::vector<std::string>& array) override;
+        void UnarchiveValue(const char* name, std::string& value) override;
 
-        virtual void BeginUnarchiveArray(const char* name, const std::string& typeName) override;
-        virtual bool BeginUnarchiveArrayItem(const std::string& typeName) override;
-        virtual void EndUnarchiveArrayItem(const std::string& typeName) override;
-        virtual void EndUnarchiveArray(const char* name, const std::string& typeName) override;
+        #define ARCHIVE_TYPE_OP(t) DECLARE_UNARCHIVE_ARRAY_OVERRIDE(t);
+        ARCHIVABLE_TYPES_LIST
+        #undef ARCHIVE_TYPE_OP
 
-        virtual ArchivedObjectInfo BeginUnarchiveObject(const char* name, const std::string& typeName) override;
-        virtual void EndUnarchiveObject(const char* name, const std::string& typeName) override;
-        virtual void UnarchiveObjectAsPrimitive(const char* name, IArchivable& value) override;
+        void UnarchiveArray(const char* name, std::vector<std::string>& array) override;
+
+        void BeginUnarchiveArray(const char* name, const std::string& typeName) override;
+        bool BeginUnarchiveArrayItem(const std::string& typeName) override;
+        void EndUnarchiveArrayItem(const std::string& typeName) override;
+        void EndUnarchiveArray(const char* name, const std::string& typeName) override;
+
+        ArchivedObjectInfo BeginUnarchiveObject(const char* name, const std::string& typeName) override;
+        void EndUnarchiveObject(const char* name, const std::string& typeName) override;
+        void UnarchiveObjectAsPrimitive(const char* name, IArchivable& value) override;
 
     private:
         template <typename ValueType, IsIntegral<ValueType> concept = 0>
@@ -164,7 +141,7 @@ namespace utilities
 
         void ReadArray(const char* name, std::vector<std::string>& array);
 
-        bool TryMatchFieldName(const char* name);
+        bool TryMatchFieldName(const char* name, std::string& found);
         void MatchFieldName(const char* name);
 
         std::string _endOfPreviousLine;
@@ -175,9 +152,16 @@ namespace utilities
     class JsonUtilities
     {
     public:
+        /// <summary></summary>
         static std::string EncodeString(const std::string& str);
+
+        /// <summary></summary>
         static std::string DecodeString(const std::string& str);
+
+        /// <summary></summary>
         static std::string EncodeTypeName(const std::string& str);
+
+        /// <summary></summary>
         static std::string DecodeTypeName(const std::string& str);
     };
 }

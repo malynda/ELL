@@ -7,25 +7,28 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "CommandLineParser.h"
+#include "Unused.h"
 
 // stl
 #include <algorithm>
-#include <iostream>
 #include <sstream>
 
 namespace ell
 {
 namespace utilities
 {
+
     //
     // ParsedArgSet class
     //
     void ParsedArgSet::AddArgs(CommandLineParser& parser)
     {
+        UNUSED(parser);
     }
 
     CommandLineParseResult ParsedArgSet::PostProcess(const CommandLineParser& parser)
     {
+        UNUSED(parser);
         return CommandLineParseResult();
     }
 
@@ -152,10 +155,13 @@ namespace utilities
         bool needsReparse = true;
         while (needsReparse)
         {
-            std::set<std::string> unset_args;
+            std::set<std::string, case_insensitive_comparer> unset_args;
             for (const auto& opt : _options)
             {
-                unset_args.insert(opt.first);
+                if (opt.second.enabled)
+                {
+                    unset_args.insert(opt.first);
+                }
             }
 
             needsReparse = false;
@@ -163,7 +169,15 @@ namespace utilities
             for (size_t index = 1; index < argc; index++)
             {
                 std::string arg = _originalArgs[index];
-                if (arg[0] == '-') // it's an option
+                if (arg == "--") // "--" is the special separator for passthrough args
+                {
+                    while (++index < argc) 
+                    {
+                        arg = _originalArgs[index];
+                        _passthroughArgs.push_back(arg);
+                    }
+                }
+                else if (arg[0] == '-') // it's an option
                 {
                     std::string option;
                     if (arg[1] == '-') // long name
@@ -173,20 +187,18 @@ namespace utilities
                     else // short name
                     {
                         std::string shortName = std::string(arg.begin() + 1, arg.end());
+                        if (!HasShortName(shortName))
+                        {
+                            throw CommandLineParserErrorException("Unknown option", { std::string("Error: unknown option ") + arg });
+                        }
                         option = _shortToLongNameMap[shortName];
                     }
 
-                    if (option == "" && arg != "--") // "--" is the special "ignore this" option --- used to put between flag arguments and the filepath
+                    if (!HasOption(option) || !_options[option].enabled)
                     {
-                        std::string errorMessage = "Error: unknown option " + arg;
-                        throw CommandLineParserErrorException("Unknown option", { errorMessage });
-                        if (index < argc - 1 && _originalArgs[index + 1][0] != '-') // skip the Next value as well, unless it's an option
-                        {
-                            index++;
-                        }
+                        throw CommandLineParserErrorException("Unknown option", { std::string("Error: unknown option ") + arg });
                     }
-
-                    if (option != "")
+                    else
                     {
                         unset_args.erase(option);
                         if (index < argc - 1)
@@ -211,11 +223,11 @@ namespace utilities
                 }
                 else
                 {
-                    _positionalArgs.push_back(_originalArgs[index]);
+                    _positionalArgs.push_back(arg);
                 }
             }
 
-            // Need to std::set default args here, in case one of them enables a conditional argument std::set
+            // Need to set default args here, in case one of them enables a conditional argument set
             needsReparse = SetDefaultArgs(unset_args) || needsReparse;
         }
 
@@ -246,7 +258,19 @@ namespace utilities
         }
     }
 
-    bool CommandLineParser::SetDefaultArgs(const std::set<std::string>& unset_args)
+    CommandLineParser::OptionInfo* CommandLineParser::FindOption(const std::string& name)
+    {
+        // case insensitive matching.
+        auto iter = _options.find(name);
+        if (iter == _options.end())
+        {
+            return nullptr;
+        }
+
+        return &iter->second;
+    }
+
+    bool CommandLineParser::SetDefaultArgs(const std::set<std::string, case_insensitive_comparer>& unset_args)
     {
         bool needsReparse = false;
         for (std::string argumentName : unset_args)
@@ -294,9 +318,10 @@ namespace utilities
         AddOption(info);
     }
 
-    bool CommandLineParser::HasOption(std::string option)
+    bool CommandLineParser::HasOption(std::string name)
     {
-        return _options.find(option) != _options.end();
+        // case insensitive matching.
+        return _options.find(name) != _options.end();
     }
 
     bool CommandLineParser::HasShortName(std::string shortName)
@@ -312,7 +337,7 @@ namespace utilities
             throw CommandLineParserInvalidOptionsException(messageStr.c_str());
         }
 
-        if (_shortToLongNameMap.find(info.shortName) != _shortToLongNameMap.end())
+        if (HasShortName(info.shortName))
         {
             auto messageStr = std::string{ "Error: adding same short name more than once (" } + info.shortName + ")";
             throw CommandLineParserInvalidOptionsException(messageStr.c_str());
@@ -409,13 +434,31 @@ namespace utilities
 
     void CommandLineParser::AddOptionSet(ParsedArgSet& options)
     {
-        AddPostParseCallback([this, &options](CommandLineParser& p) { return options.PostProcess(p); });
+        AddPostParseCallback([&options](CommandLineParser& p) { return options.PostProcess(p); });
         options.AddArgs(*this);
     }
 
     void CommandLineParser::AddDocumentationString(std::string str)
     {
         _docEntries.emplace_back(DocumentationEntry::Type::str, str);
+    }
+
+    void CommandLineParser::DisableOption(std::string name)
+    {
+        auto option = FindOption(name);
+        if (option != nullptr)
+        {
+            option->enabled = false;
+        }
+    }
+
+    void CommandLineParser::EnableOption(std::string name)
+    {
+        auto option = FindOption(name);
+        if (option != nullptr)
+        {
+            option->enabled = true;
+        }
     }
 
     std::string CommandLineParser::GetHelpString()
@@ -425,7 +468,7 @@ namespace utilities
         size_t longest_name = 0;
         for (const auto& iter : _options)
         {
-            if (iter.first == iter.second.name) // wasn't a previously-undefined option
+            if (ToLowercase(iter.first) == ToLowercase(iter.second.name)) // wasn't a previously-undefined option
             {
                 longest_name = std::max(longest_name, iter.second.optionNameHelpLength());
             }
@@ -441,23 +484,26 @@ namespace utilities
                 case DocumentationEntry::Type::option:
                 {
                     const OptionInfo& info = _options[entry.EntryString];
-                    std::string option_name = info.optionNameString();
-                    size_t thisOptionNameLen = info.optionNameHelpLength();
-                    size_t pad_len = 2 + (longest_name - thisOptionNameLen);
-                    std::string padding(pad_len, ' ');
-                    out << "\t--" << option_name << padding << info.description;
-                    if (info.enumValues.size() > 0)
+                    if (info.enabled)
                     {
-                        out << "  {";
-                        std::string sep = "";
-                        out << info.enumValues[0];
-                        for (size_t index = 1; index < info.enumValues.size(); ++index)
+                        std::string option_name = info.optionNameString();
+                        size_t thisOptionNameLen = info.optionNameHelpLength();
+                        size_t pad_len = 2 + (longest_name - thisOptionNameLen);
+                        std::string padding(pad_len, ' ');
+                        out << "\t--" << option_name << padding << info.description;
+                        if (info.enumValues.size() > 0)
                         {
-                            out << " | " << info.enumValues[index];
+                            out << "  {";
+                            std::string sep = "";
+                            out << info.enumValues[0];
+                            for (size_t index = 1; index < info.enumValues.size(); ++index)
+                            {
+                                out << " | " << info.enumValues[index];
+                            }
+                            out << "}";
                         }
-                        out << "}";
+                        out << std::endl;
                     }
-                    out << std::endl;
                 }
                 break;
 
@@ -475,7 +521,7 @@ namespace utilities
         std::stringstream out;
         out << "Current parameters for " << _exeName << std::endl;
 
-        std::set<std::string> visited_options;
+        std::set<std::string, case_insensitive_comparer> visited_options;
         for (auto& entry : _docEntries)
         {
             if (entry.EntryType == DocumentationEntry::Type::option)
@@ -525,9 +571,9 @@ namespace utilities
         return out.str();
     }
 
-    std::string CommandLineParser::GetOptionValue(const std::string& option)
+    std::string CommandLineParser::GetOptionValue(const std::string& name)
     {
-        auto it = _options.find(option);
+        auto it = _options.find(name);
         if (it != _options.end())
         {
             return it->second.currentValueString;

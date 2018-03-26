@@ -9,6 +9,9 @@
 #pragma once
 #include "Layer.h"
 
+// stl
+#include <vector>
+
 namespace ell
 {
 namespace predictors
@@ -39,15 +42,19 @@ namespace neural
         /// <summary> Parameters common to all layers. </summary>
         struct InputParameters
         {
-            /// <summary> Shape of the input tensor.. </summary>
+            /// <summary> Shape of the input tensor. </summary>
             Shape inputShape;
+
             /// <summary> The padding requirements for the input. </summary>
             PaddingParameters inputPaddingParameters;
-            /// <summary> The extents of the tensor in canonical row, column, channel order. This size includes padding. </summary>
+
+            /// <summary> The extents of the tensor in logical order (row, column, channel). This size includes padding. </summary>
             Shape outputShape;
+
             /// <summary> The padding requirements for the output. </summary>
             PaddingParameters outputPaddingParameters;
-            /// <summary> The scale factor to apply to each input value. Default is 1 (i.e. no scale). </summary>
+
+            /// <summary> The scale factor to apply to each input value. Default is undefined. </summary>
             ElementType scale;
         };
 
@@ -64,6 +71,11 @@ namespace neural
         ///
         /// <param name="input"> Copies the input vector to the input tensor. </param>
         void SetInput(const DataVectorType& input);
+
+        /// <summary> Sets the input. </summary>
+        ///
+        /// <param name="input"> Copies the input vector to the input tensor. </param>
+        void SetInput(const std::vector<ElementType>& input);
 
         /// <summary> Gets a writeable reference to the input. </summary>
         ///
@@ -91,11 +103,11 @@ namespace neural
         /// <summary> Gets the name of this type (for serialization). </summary>
         ///
         /// <returns> The name of this type. </returns>
-        virtual std::string GetRuntimeTypeName() const override { return GetTypeName(); }
+        std::string GetRuntimeTypeName() const override { return GetTypeName(); }
 
     protected:
-        virtual void WriteToArchive(utilities::Archiver& archiver) const override;
-        virtual void ReadFromArchive(utilities::Unarchiver& archiver) override;
+        void WriteToArchive(utilities::Archiver& archiver) const override;
+        void ReadFromArchive(utilities::Unarchiver& archiver) override;
 
     private:
         using Layer<ElementType>::_layerParameters;

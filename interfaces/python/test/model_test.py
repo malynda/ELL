@@ -1,6 +1,7 @@
-from __future__ import print_function
+import os
 import functools
-import ELL
+
+import ell
 
 
 def GetName(node): return node.GetId()
@@ -20,7 +21,7 @@ def GetNodeDictionary(nodes):
 of indices is 1 .. V. This means that 0 cannot be the index of a
 valid Node object.
 
-If the input is [node_1, node_2, ..., node_V] then the output is 
+If the input is [node_1, node_2, ..., node_V] then the output is
 a mapping 'index' such that index[node_n] = n where n = 1 ... V.
 This means that node indices are one-based.
 
@@ -99,7 +100,7 @@ def GetAdjacencyList(nodes, index):
 
 def DFS(u, baggage):
     '''
-    Depth first search starting at vertex u where 1 <= u <= V 
+    Depth first search starting at vertex u where 1 <= u <= V
     baggage contains state
     '''
     (adj, vertexStates, parents, processEdge,
@@ -147,7 +148,7 @@ def GetGraphStats(adj):
 
         e.g.   1 -- 2 -- 3 has adj = [None,[2],[1,3],[2]]
 
-    Returns an array of (V,E) pairs where V and E are the count of 
+    Returns an array of (V,E) pairs where V and E are the count of
     vertices and edges of each disjoint subgraph
     '''
     parents = [None for x in adj]
@@ -171,11 +172,11 @@ def GetGraphStats(adj):
     return stats
 
 
-def testModel(key):
-    model = ELL.ELL_Model(key)
+def testModel(filename):
+    model = ell.model.Model(filename)
     nodes, index = GetNodesAndIndex(model)
     adj = GetAdjacencyList(nodes, index)
-    print(key, end="\t")
+    print(filename, end="\t")
     stats = GetGraphStats(adj)
     n = len(stats)
     if n == 0:
@@ -193,10 +194,10 @@ def testModel(key):
 
 
 def test():
-    keys = ['[1]', '[2]', '[3]', '[tree_0]',
-            '[tree_1]', '[tree_2]', '[tree_3]']
-    for key in keys:
-        testModel(key)
+    prefix = "../../../examples/models"
+    fileNames = ["model_1.model", "model_2.model"]
+    for name in fileNames:
+        testModel(os.path.join(prefix, name))
     return 0
 
 

@@ -11,17 +11,12 @@
 #include "Archiver.h"
 #include "Exception.h"
 #include "ObjectArchive.h"
-#include "TypeFactory.h"
 #include "TypeName.h"
 
 // stl
 #include <cstddef>
 #include <cstdint>
-#include <memory>
-#include <ostream>
-#include <sstream>
 #include <string>
-#include <type_traits>
 #include <vector>
 
 namespace ell
@@ -47,67 +42,46 @@ namespace utilities
         /// <returns> The `ObjectArchive` containing the information  for the archived object </returns>
         const ObjectArchive& GetObjectArchive() { return _objectDescription; }
 
+        /// <summary> Indicates if a property with the given name is available to be read next </summary>
+        ///
+        /// <param name="name"> The name of the property </param>
+        ///
+        /// <returns> true if a property with the given name can be read next </returns>
+        bool HasNextPropertyName(const std::string& name) override;
+
     protected:
         // Serialization
-        DECLARE_ARCHIVE_VALUE_OVERRIDE(bool);
-        DECLARE_ARCHIVE_VALUE_OVERRIDE(char);
-        DECLARE_ARCHIVE_VALUE_OVERRIDE(short);
-        DECLARE_ARCHIVE_VALUE_OVERRIDE(int);
-        DECLARE_ARCHIVE_VALUE_OVERRIDE(size_t);
-        DECLARE_ARCHIVE_VALUE_OVERRIDE(int64_t);
-#ifdef __APPLE__
-        DECLARE_ARCHIVE_VALUE_OVERRIDE(uint64_t);
-#endif
-        DECLARE_ARCHIVE_VALUE_OVERRIDE(float);
-        DECLARE_ARCHIVE_VALUE_OVERRIDE(double);
-        virtual void ArchiveValue(const char* name, const std::string& value) override;
+        #define ARCHIVE_TYPE_OP(t) DECLARE_ARCHIVE_VALUE_OVERRIDE(t);
+        ARCHIVABLE_TYPES_LIST
+        #undef ARCHIVE_TYPE_OP
 
-        DECLARE_ARCHIVE_ARRAY_OVERRIDE(bool);
-        DECLARE_ARCHIVE_ARRAY_OVERRIDE(char);
-        DECLARE_ARCHIVE_ARRAY_OVERRIDE(short);
-        DECLARE_ARCHIVE_ARRAY_OVERRIDE(int);
-        DECLARE_ARCHIVE_ARRAY_OVERRIDE(size_t);
-        DECLARE_ARCHIVE_ARRAY_OVERRIDE(int64_t);
-#ifdef __APPLE__
-        DECLARE_ARCHIVE_ARRAY_OVERRIDE(uint64_t);
-#endif
-        DECLARE_ARCHIVE_ARRAY_OVERRIDE(float);
-        DECLARE_ARCHIVE_ARRAY_OVERRIDE(double);
-        virtual void ArchiveArray(const char* name, const std::vector<std::string>& array) override;
-        virtual void ArchiveArray(const char* name, const std::string& baseTypeName, const std::vector<const IArchivable*>& array) override;
+        void ArchiveValue(const char* name, const std::string& value) override;
 
-        virtual void ArchiveObject(const char* name, const IArchivable& value) override;
+        #define ARCHIVE_TYPE_OP(t) DECLARE_ARCHIVE_ARRAY_OVERRIDE(t);
+        ARCHIVABLE_TYPES_LIST
+        #undef ARCHIVE_TYPE_OP
+
+        void ArchiveArray(const char* name, const std::vector<std::string>& array) override;
+        void ArchiveArray(const char* name, const std::string& baseTypeName, const std::vector<const IArchivable*>& array) override;
+
+        void ArchiveObject(const char* name, const IArchivable& value) override;
 
         // Deserialization
-        DECLARE_UNARCHIVE_VALUE_OVERRIDE(bool);
-        DECLARE_UNARCHIVE_VALUE_OVERRIDE(char);
-        DECLARE_UNARCHIVE_VALUE_OVERRIDE(short);
-        DECLARE_UNARCHIVE_VALUE_OVERRIDE(int);
-        DECLARE_UNARCHIVE_VALUE_OVERRIDE(size_t);
-        DECLARE_UNARCHIVE_VALUE_OVERRIDE(int64_t);
-#ifdef __APPLE__
-        DECLARE_UNARCHIVE_VALUE_OVERRIDE(uint64_t);
-#endif
-        DECLARE_UNARCHIVE_VALUE_OVERRIDE(float);
-        DECLARE_UNARCHIVE_VALUE_OVERRIDE(double);
-        virtual void UnarchiveValue(const char* name, std::string& value) override;
+        #define ARCHIVE_TYPE_OP(t) DECLARE_UNARCHIVE_VALUE_OVERRIDE(t);
+        ARCHIVABLE_TYPES_LIST
+        #undef ARCHIVE_TYPE_OP
 
-        DECLARE_UNARCHIVE_ARRAY_OVERRIDE(bool);
-        DECLARE_UNARCHIVE_ARRAY_OVERRIDE(char);
-        DECLARE_UNARCHIVE_ARRAY_OVERRIDE(short);
-        DECLARE_UNARCHIVE_ARRAY_OVERRIDE(int);
-        DECLARE_UNARCHIVE_ARRAY_OVERRIDE(size_t);
-        DECLARE_UNARCHIVE_ARRAY_OVERRIDE(int64_t);
-#ifdef __APPLE__
-        DECLARE_UNARCHIVE_ARRAY_OVERRIDE(uint64_t);
-#endif
-        DECLARE_UNARCHIVE_ARRAY_OVERRIDE(float);
-        DECLARE_UNARCHIVE_ARRAY_OVERRIDE(double);
-        virtual void UnarchiveArray(const char* name, std::vector<std::string>& array) override;
+        void UnarchiveValue(const char* name, std::string& value) override;
 
-        virtual void UnarchiveObject(const char* name, IArchivable& value) override;
-        virtual bool BeginUnarchiveArrayItem(const std::string& typeName) override;
-        virtual void EndUnarchiveArrayItem(const std::string& typeName) override;
+        #define ARCHIVE_TYPE_OP(t) DECLARE_UNARCHIVE_ARRAY_OVERRIDE(t);
+        ARCHIVABLE_TYPES_LIST
+        #undef ARCHIVE_TYPE_OP
+
+        void UnarchiveArray(const char* name, std::vector<std::string>& array) override;
+
+        void UnarchiveObject(const char* name, IArchivable& value) override;
+        bool BeginUnarchiveArrayItem(const std::string& typeName) override;
+        void EndUnarchiveArrayItem(const std::string& typeName) override;
 
     private:
         // Serialization
